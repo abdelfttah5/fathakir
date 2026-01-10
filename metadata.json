@@ -1,0 +1,9 @@
+{
+  "name": "فَذَكِّر - Fathakkir",
+  "description": "تطبيق للمجموعات الخاصة لتعزيز الذكر والورد والرواتب باطمئنان وخصوصية.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}

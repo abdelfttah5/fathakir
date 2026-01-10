@@ -1,0 +1,64 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isGroupMember(groupId) {
+      return exists(/databases/$(database)/documents/group_members/$(groupId + '_' + request.auth.uid));
+    }
+    
+    function isGroupAdmin(groupId) {
+       return get(/databases/$(database)/documents/groups/$(groupId)).data.adminId == request.auth.uid;
+    }
+
+    match /users/{userId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    match /groups/{groupId} {
+      allow read: if isSignedIn() && isGroupMember(groupId);
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && isGroupAdmin(groupId);
+    }
+
+    match /invites/{inviteId} {
+       allow read, write: if isSignedIn() && isGroupAdmin(resource.data.groupId);
+    }
+
+    match /group_members/{memberId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+    }
+
+    match /activity_logs/{logId} {
+      allow read: if isSignedIn() && isGroupMember(resource.data.groupId);
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+    }
+
+    // LOCATION SETTINGS: Private to the user
+    match /location_settings/{userId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // LOCATION LAST POINT: Owner writes, Group members read based on logic
+    // NOTE: Complex list filtering (SelectedUserIds) is hard in basic rules without extra structure.
+    // For MVP V1 Rules, we allow read if group member, trusting client to respect visibility fields,
+    // OR we would need a subcollection per user.
+    // Here we implement the strict owner-write rule.
+    match /location_last_point/{userId} {
+       allow write: if isSignedIn() && request.auth.uid == userId;
+       allow read: if isSignedIn() && isGroupMember(resource.data.groupId); 
+       // In a production app with "Selected" visibility, we'd use a dedicated "visible_points" subcollection per viewer 
+       // or Cloud Functions to replicate data securely.
+    }
+    
+    match /meet_calls/{callId} {
+      allow read: if isSignedIn() && isGroupMember(resource.data.groupId);
+      allow create: if isSignedIn() && isGroupMember(request.resource.data.groupId);
+      allow update: if isSignedIn() && isGroupMember(resource.data.groupId);
+    }
+  }
+}
