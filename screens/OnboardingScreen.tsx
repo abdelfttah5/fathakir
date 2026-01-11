@@ -6,24 +6,30 @@ import {
   joinGroupInFirestore, 
   registerUser, 
   loginUser, 
+  loginGuestUser,
   getUserGroup,
   resetPassword,
   observeAuthState
 } from '../services/firebase';
+import { updateProfile } from "firebase/auth";
 
 interface OnboardingProps {
   onComplete: (user: User, group: Group) => void;
 }
 
 const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete }) => {
-  // Phase: 'AUTH' (Login/Signup) or 'GROUP' (Join/Create)
+  // Phase: 'AUTH' (Login/Signup/QuickJoin) or 'GROUP' (Create/Join manually)
   const [phase, setPhase] = useState<'AUTH' | 'GROUP'>('AUTH');
   
   // Auth State
-  const [authMode, setAuthMode] = useState<'LOGIN' | 'REGISTER' | 'FORGOT'>('LOGIN');
+  const [authMode, setAuthMode] = useState<'LOGIN' | 'REGISTER' | 'JOIN_CODE'>('LOGIN');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  
+  // Quick Join State
+  const [quickName, setQuickName] = useState('');
+  const [quickCode, setQuickCode] = useState('');
   
   // Group State
   const [groupMode, setGroupMode] = useState<'CREATE' | 'JOIN'>('CREATE');
@@ -40,7 +46,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete }) => {
   // 1. Check if user is already logged in (Persistent Session)
   useEffect(() => {
     const unsubscribe = observeAuthState(async (firebaseUser) => {
-      if (firebaseUser && !firebaseUser.isAnonymous) {
+      if (firebaseUser) {
         // User is logged in
         try {
           setIsLoading(true);
@@ -50,7 +56,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete }) => {
             name: firebaseUser.displayName || 'مستخدم',
             email: firebaseUser.email || '',
             isAdmin: false,
-            isGuest: false,
+            isGuest: firebaseUser.isAnonymous, // It is guest if anonymous
             privacySettings: { showDetails: false, shareLocation: false }
           };
           
@@ -61,11 +67,23 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete }) => {
           if (group) {
             onComplete(userObj, group);
           } else {
+            // Logged in but no group -> Go to Group Phase
             setPhase('GROUP');
             setIsLoading(false);
           }
         } catch (err) {
           console.error(err);
+           if (!currentUser && firebaseUser) {
+              const u: User = {
+                id: firebaseUser.uid,
+                name: firebaseUser.displayName || 'زائر',
+                email: firebaseUser.email || '',
+                isAdmin: false,
+                isGuest: firebaseUser.isAnonymous,
+                privacySettings: { showDetails: false, shareLocation: false }
+              };
+              setCurrentUser(u);
+           }
           setPhase('GROUP');
           setIsLoading(false);
         }
@@ -96,6 +114,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete }) => {
         const user = await registerUser(email, password, name);
         setCurrentUser({ ...user, isGuest: false });
         setPhase('GROUP'); 
+
       } else if (authMode === 'LOGIN') {
         const user = await loginUser(email, password);
         setCurrentUser({ ...user, isGuest: false });
@@ -107,16 +126,44 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete }) => {
         } else {
           setPhase('GROUP');
         }
-      } else if (authMode === 'FORGOT') {
-        await resetPassword(email);
-        setSuccessMsg("تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك الإلكتروني.");
-        setAuthMode('LOGIN');
-      }
+
+      } else if (authMode === 'JOIN_CODE') {
+        // QUICK JOIN FLOW
+        if (!quickName.trim()) throw new Error("الرجاء إدخال الاسم");
+        if (!quickCode.trim()) throw new Error("الرجاء إدخال رمز الدعوة");
+
+        // 1. Create Anon User
+        const user = await loginGuestUser();
+        
+        // 2. Update Name manually since Guest Login might not set it immediately in Auth object
+        const updatedUser = { ...user, name: quickName };
+
+        // 3. Join Group
+        const group = await joinGroupInFirestore(quickCode, updatedUser);
+        if (group) {
+          onComplete(updatedUser, group);
+        } else {
+           throw new Error("لم يتم العثور على المجموعة");
+        }
+      } 
     } catch (err: any) {
       console.error(err);
-      setError(translateError(err.code || err.message));
+      setError(translateError(err.code || err.message || err.toString()));
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handlePasswordReset = async () => {
+    if (!email) {
+      setError("أدخل البريد الإلكتروني أولاً");
+      return;
+    }
+    try {
+      await resetPassword(email);
+      setSuccessMsg("تم إرسال رابط إعادة تعيين كلمة المرور.");
+    } catch (e: any) {
+      setError(translateError(e.code || ""));
     }
   };
 
@@ -182,7 +229,9 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete }) => {
         <div className="bg-emerald-600 p-8 text-center text-white relative overflow-hidden">
           <div className="relative z-10 flex flex-col items-center">
              <h1 className="text-2xl font-bold font-amiri mb-2">مجموعتي</h1>
-             <p className="text-emerald-100 opacity-90 text-sm">سجل دخولك لإنشاء مجموعة عائلية أو الانضمام لأصدقائك</p>
+             <p className="text-emerald-100 opacity-90 text-sm">
+               {phase === 'AUTH' ? 'سجل دخولك أو انضم برمز الدعوة للتواصل مع عائلتك' : 'قم بإنشاء مجموعة أو الانضمام لأخرى'}
+             </p>
           </div>
         </div>
 
@@ -193,26 +242,27 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete }) => {
               <div className="flex bg-slate-100 p-1 rounded-xl mb-6">
                 <button
                   onClick={() => { setAuthMode('LOGIN'); setError(''); }}
-                  className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${authMode === 'LOGIN' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500'}`}
+                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${authMode === 'LOGIN' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500'}`}
                 >
-                  تسجيل دخول
+                  دخول
                 </button>
                 <button
                   onClick={() => { setAuthMode('REGISTER'); setError(''); }}
-                  className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${authMode === 'REGISTER' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500'}`}
+                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${authMode === 'REGISTER' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500'}`}
                 >
-                  حساب جديد
+                  جديد
+                </button>
+                <button
+                  onClick={() => { setAuthMode('JOIN_CODE'); setError(''); }}
+                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${authMode === 'JOIN_CODE' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500'}`}
+                >
+                  انضمام
                 </button>
               </div>
 
-              {authMode === 'FORGOT' ? (
-                 <div className="mb-6 text-center">
-                    <h3 className="font-bold text-slate-800 mb-2">نسيت كلمة المرور؟</h3>
-                    <p className="text-xs text-slate-500">أدخل بريدك الإلكتروني لنرسل لك رابط الاستعادة.</p>
-                 </div>
-              ) : null}
-
               <form onSubmit={handleAuthSubmit} className="space-y-4">
+                
+                {/* 1. REGISTER FORM */}
                 {authMode === 'REGISTER' && (
                   <div>
                     <label className="block text-xs font-bold text-slate-600 mb-1">الاسم</label>
@@ -227,32 +277,65 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete }) => {
                   </div>
                 )}
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">البريد الإلكتروني</label>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition-all text-left placeholder:text-right"
-                    style={{ direction: 'ltr' }}
-                    placeholder="name@example.com"
-                    required
-                  />
-                </div>
+                {(authMode === 'REGISTER' || authMode === 'LOGIN') && (
+                  <>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">البريد الإلكتروني</label>
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition-all text-left placeholder:text-right"
+                        style={{ direction: 'ltr' }}
+                        placeholder="name@example.com"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">كلمة المرور</label>
+                      <input
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition-all text-left"
+                        placeholder="••••••••"
+                        required
+                        minLength={6}
+                      />
+                    </div>
+                  </>
+                )}
 
-                {authMode !== 'FORGOT' && (
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">كلمة المرور</label>
-                    <input
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition-all text-left"
-                      placeholder="••••••••"
-                      required
-                      minLength={6}
-                    />
-                  </div>
+                {/* 2. JOIN CODE FORM */}
+                {authMode === 'JOIN_CODE' && (
+                  <>
+                    <div className="bg-amber-50 p-4 rounded-xl text-xs text-amber-800 mb-4 border border-amber-100 leading-relaxed">
+                      <strong>هل حصلت على رمز دعوة؟</strong><br/>
+                      أدخل اسمك ورمز الدعوة للانضمام فوراً إلى المجموعة ورؤية الأعضاء الآخرين.
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">اسمك</label>
+                      <input
+                        type="text"
+                        value={quickName}
+                        onChange={(e) => setQuickName(e.target.value)}
+                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
+                        placeholder="الاسم الذي سيظهر للعائلة"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">رمز الدعوة</label>
+                      <input
+                        type="text"
+                        value={quickCode}
+                        onChange={(e) => setQuickCode(e.target.value.toUpperCase())}
+                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-center text-lg font-mono tracking-widest uppercase"
+                        placeholder="XYZ-123"
+                        required
+                      />
+                    </div>
+                  </>
                 )}
 
                 {error && <div className="text-red-500 text-xs bg-red-50 p-3 rounded-lg text-center font-bold" style={{direction: 'ltr'}}>{error}</div>}
@@ -262,26 +345,16 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete }) => {
                   type="submit" 
                   className="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-emerald-200 active:scale-95 transition-all"
                 >
-                  {authMode === 'LOGIN' ? 'دخول' : authMode === 'REGISTER' ? 'إنشاء الحساب' : 'إرسال الرابط'}
+                  {authMode === 'LOGIN' ? 'دخول' : authMode === 'REGISTER' ? 'إنشاء الحساب' : 'انضمام للمجموعة'}
                 </button>
 
                 {authMode === 'LOGIN' && (
                   <button 
                     type="button"
-                    onClick={() => { setAuthMode('FORGOT'); setError(''); }}
+                    onClick={handlePasswordReset}
                     className="block w-full text-center text-xs text-slate-400 mt-2 hover:text-emerald-600"
                   >
                     نسيت كلمة المرور؟
-                  </button>
-                )}
-                
-                {authMode === 'FORGOT' && (
-                  <button 
-                    type="button"
-                    onClick={() => { setAuthMode('LOGIN'); setError(''); }}
-                    className="block w-full text-center text-xs text-slate-400 mt-4 hover:text-emerald-600"
-                  >
-                    العودة لتسجيل الدخول
                   </button>
                 )}
               </form>

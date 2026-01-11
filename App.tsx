@@ -61,10 +61,7 @@ function App() {
     const unsubscribe = observeAuthState((firebaseUser) => {
         if (firebaseUser) {
            // If we found a real logged-in user, update state
-           // Note: In a real app we'd fetch the group here too. 
-           // For MVP, we rely on Onboarding or successful login callback to set full state properly if not handled here.
-           // However, if firebaseUser exists, we shouldn't be in Guest mode.
-           // For simplicity in this logic: if firebaseUser is null, we stay as Guest.
+           // We rely on Onboarding or successful login callback to set full state properly if not handled here.
         }
         setIsLoading(false);
     });
@@ -130,11 +127,11 @@ function App() {
       timestamp: Date.now(),
     };
 
-    if (user.isGuest) {
-      // If guest, just update local state temporarily for UI feedback
+    // If user is in Guest Space, local only. 
+    // If user is Guest but in Real Group (joined via code), sync to Firestore.
+    if (group.id === 'guest_space') {
       setLogs(prev => [newLog, ...prev]);
     } else {
-      // If real user, sync to firestore
       await logActivityToFirestore(group.id, newLog);
     }
   };
@@ -144,7 +141,8 @@ function App() {
   };
 
   const updateMyLocation = async (lat: number, lng: number, accuracyLabel: 'تقريبي' | 'دقيق') => {
-    if (!user || !group || user.isGuest) return; // Don't sync location for guests
+    // Only sync location if in a real group
+    if (!user || !group || group.id === 'guest_space') return; 
 
     const point: LocationPoint = {
       userId: user.id,
@@ -176,8 +174,9 @@ function App() {
       case 'read': 
         return <QuranScreen user={user!} addLog={addLog} />;
       case 'group': 
-        // Logic: If user is Guest, show Onboarding (Auth) screen to create/join group
-        if (user?.isGuest) {
+        // Logic: Show Onboarding only if the user is in the default "guest_space".
+        // If they joined a group via code (even if they are a 'guest' auth-wise), they should see the group screen.
+        if (group?.id === 'guest_space') {
            return <OnboardingScreen onComplete={handleLogin} />;
         }
         return <GroupScreen 
@@ -257,12 +256,13 @@ function App() {
                </div>
                
                <div className="flex gap-2 justify-center mt-6">
-                 {!user.isGuest && (
+                 {/* Show logout if not in guest space OR if user is not anonymous */}
+                 {group?.id !== 'guest_space' && (
                    <button 
                      onClick={handleLogout}
                      className="px-6 py-3 bg-red-50 text-red-600 rounded-xl font-bold text-xs border border-red-100"
                    >
-                     تسجيل الخروج
+                     مغادرة المجموعة
                    </button>
                  )}
                  <button 
