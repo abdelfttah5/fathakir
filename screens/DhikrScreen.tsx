@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import * as React from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { User, ActivityType, AzkarJSON, ZekrItem } from '../types';
 import { TASBIH_FIXED_LIST } from '../constants';
 import { fetchAllAzkarDB, clearAzkarCache } from '../services/api';
@@ -8,7 +9,7 @@ interface DhikrScreenProps {
   addLog: (type: ActivityType, summary: string, details?: string) => void;
 }
 
-// Grid structure matches the UI requirement
+// Grid structure - Keys must exactly match STATIC_AZKAR keys or handled in normalization
 const GRID_ITEMS = [
   { label: 'أذكار الصباح', icon: '☀️' },
   { label: 'أذكار المساء', icon: '🌙' },
@@ -56,6 +57,9 @@ const DhikrScreen: React.FC<DhikrScreenProps> = ({ user, addLog }) => {
 
   // Tasbih Local State (Remaining Counts)
   const [tasbihCounts, setTasbihCounts] = useState<Record<number, number>>({});
+
+  // Search State
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     loadData();
@@ -115,10 +119,12 @@ const DhikrScreen: React.FC<DhikrScreenProps> = ({ user, addLog }) => {
     let items = azkarDB[label];
 
     if (!items) {
+       // Try partial match if exact key fails
        const foundKey = Object.keys(azkarDB).find(k => k.includes(label) || label.includes(k));
        if (foundKey) items = azkarDB[foundKey];
     }
 
+    // Special fix for Post Prayer if mapping differs slightly
     if (!items && label === 'أذكار بعد الصلاة') {
         const key = Object.keys(azkarDB).find(k => k.includes('بعد الصلاة'));
         if (key) items = azkarDB[key];
@@ -134,9 +140,58 @@ const DhikrScreen: React.FC<DhikrScreenProps> = ({ user, addLog }) => {
     }
   };
 
+  const handleSearchResultClick = (items: ZekrItem[], startIndex: number) => {
+    setActiveSession({ title: 'نتائج البحث', items });
+    setCurrentIndex(startIndex);
+    setMode('session');
+  };
+
+  // --- Search Logic & Normalization ---
+  
+  const normalizeArabic = (text: string) => {
+    // 1. Remove Tashkeel (Diacritics)
+    // Range includes Fathatan, Dammatan, Kasratan, Fatha, Damma, Kasra, Shadda, Sukun, etc.
+    let normalized = text.replace(/[\u064B-\u065F\u0670]/g, '');
+    
+    // 2. Normalize Alef forms (أ, إ, آ -> ا)
+    normalized = normalized.replace(/[أإآ]/g, 'ا');
+    
+    // 3. Normalize Taa Marbuta (ة -> ه)
+    normalized = normalized.replace(/ة/g, 'ه');
+    
+    // 4. Normalize Ya (ى -> ي)
+    normalized = normalized.replace(/ى/g, 'ي');
+    
+    return normalized;
+  };
+
+  const searchResults = useMemo(() => {
+    if (!azkarDB || !searchQuery.trim()) return [];
+    
+    const queryNorm = normalizeArabic(searchQuery.trim());
+    const results: ZekrItem[] = [];
+    
+    Object.keys(azkarDB).forEach(key => {
+      const categoryItems = azkarDB[key];
+      categoryItems.forEach(item => {
+        const itemZekrNorm = normalizeArabic(item.zekr);
+        const itemDescNorm = item.description ? normalizeArabic(item.description) : '';
+        
+        // Search in both text and description using normalized forms
+        if (itemZekrNorm.includes(queryNorm) || itemDescNorm.includes(queryNorm)) {
+          results.push({ ...item, category: item.category || key });
+        }
+      });
+    });
+    
+    return results;
+  }, [azkarDB, searchQuery]);
+
   // --- Session Handlers ---
   
-  const handleCounterClick = () => {
+  const handleCounterClick = (e?: React.MouseEvent) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    
     if (remainingCount > 0) {
       // Haptic feedback if available
       if (navigator.vibrate) navigator.vibrate(50);
@@ -154,7 +209,8 @@ const DhikrScreen: React.FC<DhikrScreenProps> = ({ user, addLog }) => {
     }
   };
 
-  const handleNext = () => {
+  const handleNext = (e?: React.MouseEvent) => {
+    if (e && e.stopPropagation) e.stopPropagation();
     if (activeSession && currentIndex < activeSession.items.length - 1) {
       setCurrentIndex(prev => prev + 1);
     } else {
@@ -162,7 +218,8 @@ const DhikrScreen: React.FC<DhikrScreenProps> = ({ user, addLog }) => {
     }
   };
 
-  const handlePrev = () => {
+  const handlePrev = (e?: React.MouseEvent) => {
+    if (e && e.stopPropagation) e.stopPropagation();
     if (currentIndex > 0) setCurrentIndex(prev => prev - 1);
   };
 
@@ -220,11 +277,8 @@ const DhikrScreen: React.FC<DhikrScreenProps> = ({ user, addLog }) => {
     const currentZekr = activeSession.items[currentIndex];
     const progress = ((currentIndex + 1) / activeSession.items.length) * 100;
     
-    // Check if original count is infinite or handled specially
-    const isInfinite = currentZekr.count === '∞';
-    
     return (
-      <div className="flex flex-col h-[calc(100vh-8rem)] p-4">
+      <div className="flex flex-col h-[calc(100vh-8rem)] p-4 select-none">
         {/* Top Bar */}
         <div className="flex justify-between items-center mb-4">
           <button onClick={() => setMode('menu')} className="text-slate-500 px-2 py-1 bg-slate-100 rounded-lg text-sm font-bold">خروج</button>
@@ -237,10 +291,13 @@ const DhikrScreen: React.FC<DhikrScreenProps> = ({ user, addLog }) => {
           <div className="bg-emerald-500 h-full transition-all duration-300 ease-out" style={{ width: `${progress}%` }}></div>
         </div>
 
-        {/* Zekr Card */}
-        <div className="flex-1 bg-white rounded-3xl p-6 shadow-sm border border-slate-100 flex flex-col relative overflow-hidden">
+        {/* Zekr Card - NOW CLICKABLE ANYWHERE */}
+        <div 
+           onClick={handleCounterClick}
+           className="flex-1 bg-white rounded-3xl p-6 shadow-sm border border-slate-100 flex flex-col relative overflow-hidden cursor-pointer active:scale-[0.98] transition-transform"
+        >
           <div className="flex-1 overflow-y-auto no-scrollbar pb-24">
-             <p className="text-2xl md:text-3xl leading-loose font-amiri text-center text-slate-800 dir-rtl select-none">
+             <p className="text-2xl md:text-3xl leading-loose font-amiri text-center text-slate-800 dir-rtl">
                {currentZekr.zekr}
              </p>
              
@@ -254,25 +311,26 @@ const DhikrScreen: React.FC<DhikrScreenProps> = ({ user, addLog }) => {
           </div>
           
           {/* Floating Action Area / Counter */}
-          <div className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm p-4 border-t border-slate-100 flex items-center justify-between">
+          <div className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm p-4 border-t border-slate-100 flex items-center justify-between pointer-events-none">
+             {/* Note: Buttons have pointer-events-auto to override parent click */}
              <button 
                 onClick={handlePrev} 
                 disabled={currentIndex === 0}
-                className="w-12 h-12 flex items-center justify-center text-slate-400 disabled:opacity-30 text-2xl"
+                className="w-12 h-12 flex items-center justify-center text-slate-400 disabled:opacity-30 text-2xl hover:bg-slate-50 rounded-full pointer-events-auto"
              >
                ➔
              </button>
 
              {/* The BIG Counter Button */}
-             <button
-               onClick={handleCounterClick}
+             <div
                className={`
-                 w-20 h-20 rounded-full flex items-center justify-center shadow-lg transition-all active:scale-90 select-none border-4
+                 w-20 h-20 rounded-full flex items-center justify-center shadow-lg transition-all border-4 pointer-events-auto
                  ${remainingCount === 0 
                     ? 'bg-emerald-500 border-emerald-200 text-white scale-110' 
                     : 'bg-emerald-600 border-emerald-100 text-white'
                  }
                `}
+               onClick={handleCounterClick}
              >
                {remainingCount === 0 ? (
                  <span className="text-3xl">✓</span>
@@ -281,27 +339,27 @@ const DhikrScreen: React.FC<DhikrScreenProps> = ({ user, addLog }) => {
                     <span className="text-3xl font-bold font-mono">{remainingCount}</span>
                  </div>
                )}
-             </button>
+             </div>
 
              {/* Next Button (Disabled if count not zero, unless forced) */}
              <button 
                 onClick={handleNext} 
-                className={`w-12 h-12 flex items-center justify-center text-2xl transition-colors ${remainingCount === 0 ? 'text-emerald-600' : 'text-slate-300'}`}
+                className={`w-12 h-12 flex items-center justify-center text-2xl transition-colors hover:bg-slate-50 rounded-full pointer-events-auto ${remainingCount === 0 ? 'text-emerald-600' : 'text-slate-300'}`}
              >
                ➜
              </button>
           </div>
         </div>
         
-        <p className="text-center text-[10px] text-slate-400 mt-2">اضغط على العداد للإنقاص</p>
+        <p className="text-center text-[10px] text-slate-400 mt-2">اضغط في أي مكان للعد</p>
       </div>
     );
   }
 
-  // 2. TASBIH MODE (Updated to match screenshot: decreasing counters on LEFT)
+  // 2. TASBIH MODE (Updated: Click Anywhere)
   if (mode === 'tasbih') {
     return (
-      <div className="flex flex-col h-[calc(100vh-8rem)] p-4">
+      <div className="flex flex-col h-[calc(100vh-8rem)] p-4 select-none">
         <div className="flex items-center justify-between mb-4 sticky top-0 bg-[#f8fafc] z-10 py-2">
           <button onClick={() => setMode('menu')} className="text-slate-500 font-bold px-2">← القائمة</button>
           <h2 className="font-bold text-emerald-800 text-lg">تسابيح - أذكار عظيمة</h2>
@@ -315,10 +373,14 @@ const DhikrScreen: React.FC<DhikrScreenProps> = ({ user, addLog }) => {
              const isDone = current === 0;
 
              return (
-               <div key={idx} className="flex bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm min-h-[8rem]">
+               <div 
+                  key={idx} 
+                  onClick={() => decrementTasbih(idx, target)}
+                  className="flex bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm min-h-[8rem] cursor-pointer active:scale-[0.98] transition-transform group"
+               >
                  
-                 {/* Right Side: Text content (Since RTL, this appears on Right) */}
-                 <div className="flex-1 p-4 flex flex-col justify-center items-start text-right">
+                 {/* Right Side: Text content */}
+                 <div className="flex-1 p-4 flex flex-col justify-center items-start text-right group-hover:bg-slate-50 transition-colors">
                     <p className="font-amiri font-bold text-lg text-slate-800 leading-snug">{item.zekr}</p>
                     {item.description && (
                        <p className="text-xs text-emerald-600 mt-2 font-medium">{item.description}</p>
@@ -328,11 +390,9 @@ const DhikrScreen: React.FC<DhikrScreenProps> = ({ user, addLog }) => {
                     </div>
                  </div>
 
-                 {/* Left Side: Counter Button (Since RTL, this appears on Left) */}
-                 <button 
-                    onClick={() => decrementTasbih(idx, target)}
-                    className={`
-                      w-24 flex-none flex flex-col items-center justify-center relative active:opacity-90 transition-colors select-none
+                 {/* Left Side: Counter Display */}
+                 <div className={`
+                      w-24 flex-none flex flex-col items-center justify-center relative transition-colors
                       ${isDone ? 'bg-emerald-700' : 'bg-emerald-500'}
                       text-white
                     `}
@@ -350,7 +410,7 @@ const DhikrScreen: React.FC<DhikrScreenProps> = ({ user, addLog }) => {
                       </div>
                     )}
 
-                    {/* Reset Button (Small, bottom-left) */}
+                    {/* Reset Button (Small, bottom-left) - Stops propagation */}
                     <div 
                         onClick={(e) => { 
                           e.stopPropagation(); 
@@ -364,7 +424,7 @@ const DhikrScreen: React.FC<DhikrScreenProps> = ({ user, addLog }) => {
                            <path d="M3 3v5h5" />
                         </svg>
                     </div>
-                 </button>
+                 </div>
                </div>
              );
            })}
@@ -380,26 +440,75 @@ const DhikrScreen: React.FC<DhikrScreenProps> = ({ user, addLog }) => {
          <h3 className="font-bold text-slate-800 text-lg">أقسام الأذكار</h3>
          <button onClick={handleRefresh} className="text-xs text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-lg font-bold active:bg-emerald-100 transition-colors">🔄 تحديث</button>
       </div>
-      
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        {GRID_ITEMS.map((item, idx) => (
-          <button
-            key={idx}
-            onClick={() => handleGridItemClick(item.label, item.isSpecial)}
-            className={`
-              p-3 rounded-xl font-bold text-sm text-center shadow-sm flex flex-col items-center justify-center gap-2 h-24
-              transition-all active:scale-95 border
-              ${item.isSpecial 
-                 ? 'bg-amber-100 border-amber-200 text-amber-800' 
-                 : 'bg-white border-slate-100 text-slate-700 hover:border-emerald-300 hover:bg-emerald-50'
-              }
-            `}
+
+      {/* Search Input */}
+      <div className="relative mb-6">
+        <input
+          type="text"
+          placeholder="ابحث عن دعاء أو ذكر..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full p-3 pr-10 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm shadow-sm transition-all"
+        />
+        <span className="absolute right-3 top-3.5 text-slate-400 text-lg">🔍</span>
+        {searchQuery && (
+          <button 
+            onClick={() => setSearchQuery('')}
+            className="absolute left-3 top-3 text-slate-400 hover:text-red-500 text-xl font-bold px-2"
           >
-            <span className="text-xl filter drop-shadow-sm">{item.icon}</span> 
-            <span className="leading-tight">{item.label}</span>
+            ✕
           </button>
-        ))}
+        )}
       </div>
+      
+      {searchQuery ? (
+        // Search Results View
+        <div className="space-y-3">
+          {searchResults.length === 0 ? (
+            <div className="text-center py-10">
+              <span className="text-4xl">🤔</span>
+              <p className="text-slate-400 mt-2 font-bold">لا توجد نتائج مطابقة</p>
+            </div>
+          ) : (
+            searchResults.map((item, idx) => (
+              <div 
+                key={idx}
+                onClick={() => handleSearchResultClick(searchResults, idx)}
+                className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm cursor-pointer active:scale-[0.99] hover:border-emerald-200 transition-all text-right"
+              >
+                <p className="font-amiri text-slate-800 line-clamp-2 leading-loose">{item.zekr}</p>
+                <div className="flex justify-between items-center mt-2">
+                   <span className="text-[10px] bg-emerald-50 text-emerald-600 px-2 py-1 rounded font-bold">{item.category}</span>
+                   {item.description && (
+                     <span className="text-[10px] text-slate-400 truncate max-w-[60%]">{item.description}</span>
+                   )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      ) : (
+        // Standard Grid View
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          {GRID_ITEMS.map((item, idx) => (
+            <button
+              key={idx}
+              onClick={() => handleGridItemClick(item.label, item.isSpecial)}
+              className={`
+                p-3 rounded-xl font-bold text-sm text-center shadow-sm flex flex-col items-center justify-center gap-2 h-24
+                transition-all active:scale-95 border
+                ${item.isSpecial 
+                   ? 'bg-amber-100 border-amber-200 text-amber-800' 
+                   : 'bg-white border-slate-100 text-slate-700 hover:border-emerald-300 hover:bg-emerald-50'
+                }
+              `}
+            >
+              <span className="text-xl filter drop-shadow-sm">{item.icon}</span> 
+              <span className="leading-tight">{item.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

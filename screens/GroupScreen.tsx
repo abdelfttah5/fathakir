@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import * as React from 'react';
+import { useState } from 'react';
 import { User, Group, ActivityLog, LocationPoint } from '../types';
 import { createGoogleMeetEvent } from '../services/api';
 

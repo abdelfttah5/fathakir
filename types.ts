@@ -1,3 +1,4 @@
+
 export enum ActivityType {
   DHIKR = 'DHIKR',
   QURAN = 'QURAN',
@@ -13,6 +14,7 @@ export interface User {
   name: string;
   email?: string;
   isAdmin: boolean;
+  isGuest?: boolean; // New flag
   avatar?: string;
   privacySettings: {
     showDetails: boolean;
@@ -87,4 +89,13 @@ export interface ZekrItem {
   description: string;
   reference: string;
   zekr: string;
+}
+
+// Fix for missing JSX types in the environment
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      [elemName: string]: any;
+    }
+  }
 }

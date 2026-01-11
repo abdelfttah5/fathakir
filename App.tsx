@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import * as React from 'react';
+import { useState, useEffect } from 'react';
 import { Navigation } from './components/Navigation';
 import { Header } from './components/Header';
 import TodayScreen from './screens/TodayScreen';
@@ -7,18 +8,43 @@ import QuranScreen from './screens/QuranScreen';
 import GroupScreen from './screens/GroupScreen';
 import OnboardingScreen from './screens/OnboardingScreen';
 import { User, Group, ActivityLog, ActivityType, LocationSettings, LocationPoint } from './types';
+import { 
+  subscribeToLogs, 
+  subscribeToMembers, 
+  subscribeToLocations, 
+  logActivityToFirestore,
+  updateLocationInFirestore,
+  logoutUser,
+  observeAuthState
+} from './services/firebase';
 
 function App() {
-  const [user, setUser] = useState<User | null>(null);
-  const [group, setGroup] = useState<Group | null>(null);
+  // Initialize with a Guest User by default so the app opens immediately
+  const [user, setUser] = useState<User | null>({
+    id: 'guest_user',
+    name: 'زائر',
+    isAdmin: false,
+    isGuest: true,
+    privacySettings: { showDetails: false, shareLocation: false }
+  });
+  
+  // Default dummy group for the guest so UI components don't crash
+  const [group, setGroup] = useState<Group | null>({
+    id: 'guest_space',
+    name: 'مساحتي الخاصة',
+    timezone: 'Asia/Muscat'
+  });
+
   const [activeTab, setActiveTab] = useState('today');
   const [isLoading, setIsLoading] = useState(true);
+  const [showInfoModal, setShowInfoModal] = useState(false);
   
-  // Lifted State for Data
+  // Real-time Data State
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [members, setMembers] = useState<User[]>([]);
+  const [locationPoints, setLocationPoints] = useState<LocationPoint[]>([]);
   
-  // Lifted State for Location (Simulation for MVP)
+  // Local Settings (Not synced globally)
   const [locationSettings, setLocationSettings] = useState<LocationSettings>({
     userId: '',
     mode: 'OFF',
@@ -27,83 +53,115 @@ function App() {
     accuracy: 'APPROX',
     pauseUntil: null
   });
-  const [locationPoints, setLocationPoints] = useState<LocationPoint[]>([]);
 
-  // Simulate Google Access Token
   const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(null);
 
+  // 1. Initial Auth Check
   useEffect(() => {
-    // Check local storage for persisted session
-    const storedUser = localStorage.getItem('fathakkir_user');
-    const storedGroup = localStorage.getItem('fathakkir_group');
-    
-    if (storedUser && storedGroup) {
-      const parsedUser = JSON.parse(storedUser);
-      setUser(parsedUser);
-      setGroup(JSON.parse(storedGroup));
-      setMembers([parsedUser]); 
-      setLocationSettings(prev => ({ ...prev, userId: parsedUser.id }));
-    }
-    setIsLoading(false);
+    const unsubscribe = observeAuthState((firebaseUser) => {
+        if (firebaseUser) {
+           // If we found a real logged-in user, update state
+           // Note: In a real app we'd fetch the group here too. 
+           // For MVP, we rely on Onboarding or successful login callback to set full state properly if not handled here.
+           // However, if firebaseUser exists, we shouldn't be in Guest mode.
+           // For simplicity in this logic: if firebaseUser is null, we stay as Guest.
+        }
+        setIsLoading(false);
+    });
+    return () => unsubscribe();
   }, []);
+
+  // 2. Real-time Subscriptions (Only if not guest space)
+  useEffect(() => {
+    if (!group?.id || group.id === 'guest_space') return;
+
+    const unsubMembers = subscribeToMembers(group.id, (fetchedMembers) => setMembers(fetchedMembers));
+    const unsubLogs = subscribeToLogs(group.id, (fetchedLogs) => setLogs(fetchedLogs));
+    const unsubLocs = subscribeToLocations(group.id, (fetchedPoints) => setLocationPoints(fetchedPoints));
+
+    return () => {
+      unsubMembers();
+      unsubLogs();
+      unsubLocs();
+    };
+  }, [group?.id]);
 
   const handleLogin = (newUser: User, newGroup: Group) => {
     setUser(newUser);
     setGroup(newGroup);
-    setMembers([newUser]);
     setLocationSettings(prev => ({ ...prev, userId: newUser.id }));
-    localStorage.setItem('fathakkir_user', JSON.stringify(newUser));
-    localStorage.setItem('fathakkir_group', JSON.stringify(newGroup));
+    setIsLoading(false);
+    // Stay on group tab after login
+    setActiveTab('group'); 
   };
 
-  const addLog = (type: ActivityType, summary: string, details?: string, category?: any) => {
+  const handleLogout = async () => {
+    if (window.confirm("هل أنت متأكد من تسجيل الخروج؟")) {
+      await logoutUser();
+      // Reset to Guest Mode
+      setUser({
+        id: 'guest_user',
+        name: 'زائر',
+        isAdmin: false,
+        isGuest: true,
+        privacySettings: { showDetails: false, shareLocation: false }
+      });
+      setGroup({
+        id: 'guest_space',
+        name: 'مساحتي الخاصة',
+        timezone: 'Asia/Muscat'
+      });
+      setActiveTab('today');
+    }
+  };
+
+  const addLog = async (type: ActivityType, summary: string, details?: string, category?: any) => {
+    if (!user || !group) return;
+
+    // Create log object
     const newLog: ActivityLog = {
-      id: Date.now().toString(),
-      userId: user!.id,
-      userName: user!.name,
+      id: `log_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      userId: user.id,
+      userName: user.name,
       type,
       summary,
       details,
       category,
       timestamp: Date.now(),
     };
-    setLogs(prev => [newLog, ...prev]);
+
+    if (user.isGuest) {
+      // If guest, just update local state temporarily for UI feedback
+      setLogs(prev => [newLog, ...prev]);
+    } else {
+      // If real user, sync to firestore
+      await logActivityToFirestore(group.id, newLog);
+    }
   };
 
-  // --- Location Handlers (Mocking Firestore) ---
   const updateLocationSettings = (newSettings: Partial<LocationSettings>) => {
     setLocationSettings(prev => ({ ...prev, ...newSettings }));
   };
 
-  const updateMyLocation = (lat: number, lng: number, accuracyLabel: 'تقريبي' | 'دقيق') => {
+  const updateMyLocation = async (lat: number, lng: number, accuracyLabel: 'تقريبي' | 'دقيق') => {
+    if (!user || !group || user.isGuest) return; // Don't sync location for guests
+
     const point: LocationPoint = {
-      userId: user!.id,
+      userId: user.id,
       lat,
       lng,
       accuracyLabel,
       timestamp: Date.now()
     };
     
-    setLocationPoints(prev => {
-      // Upsert: Remove old point for this user, add new
-      const filtered = prev.filter(p => p.userId !== user!.id);
-      return [...filtered, point];
-    });
+    await updateLocationInFirestore(group.id, point);
   };
-
-  if (isLoading) {
-    return <div className="flex items-center justify-center h-screen bg-emerald-50 text-emerald-600">جاري التحميل...</div>;
-  }
-
-  if (!user) {
-    return <OnboardingScreen onComplete={handleLogin} />;
-  }
 
   const renderScreen = () => {
     switch (activeTab) {
       case 'today': 
         return <TodayScreen 
-          user={user} 
+          user={user!} 
           group={group!} 
           logs={logs} 
           addLog={addLog}
@@ -111,14 +169,19 @@ function App() {
           locationSettings={locationSettings}
           updateLocationSettings={updateLocationSettings}
           updateMyLocation={updateMyLocation}
+          onNavigate={setActiveTab}
         />;
       case 'dhikr': 
-        return <DhikrScreen user={user} addLog={addLog} />;
+        return <DhikrScreen user={user!} addLog={addLog} />;
       case 'read': 
-        return <QuranScreen user={user} addLog={addLog} />;
+        return <QuranScreen user={user!} addLog={addLog} />;
       case 'group': 
+        // Logic: If user is Guest, show Onboarding (Auth) screen to create/join group
+        if (user?.isGuest) {
+           return <OnboardingScreen onComplete={handleLogin} />;
+        }
         return <GroupScreen 
-          user={user} 
+          user={user!} 
           group={group!} 
           members={members} 
           logs={logs} 
@@ -128,7 +191,7 @@ function App() {
         />;
       default: 
         return <TodayScreen 
-          user={user} 
+          user={user!} 
           group={group!} 
           logs={logs} 
           addLog={addLog}
@@ -136,28 +199,87 @@ function App() {
           locationSettings={locationSettings}
           updateLocationSettings={updateLocationSettings}
           updateMyLocation={updateMyLocation}
+          onNavigate={setActiveTab}
         />;
     }
   };
 
+  if (!user) return null; // Should not happen with default state
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans pb-20">
-      <Header title={activeTab === 'today' ? undefined : getTitle(activeTab)} userInitials={user.name[0]} />
+      <Header 
+        activeTab={activeTab} 
+        userInitials={user.name[0]} 
+        onInfoClick={() => setShowInfoModal(true)}
+      />
+      
       <main className="max-w-md mx-auto min-h-[calc(100vh-8rem)]">
         {renderScreen()}
       </main>
       <Navigation activeTab={activeTab} onTabChange={setActiveTab} />
+
+      {/* INFO MODAL */}
+      {showInfoModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in" onClick={() => setShowInfoModal(false)}>
+          <div className="bg-white w-full max-w-sm rounded-3xl p-8 text-center shadow-2xl relative overflow-hidden" onClick={e => e.stopPropagation()}>
+            
+            {/* Background Pattern */}
+            <div className="absolute top-0 left-0 right-0 h-32 bg-emerald-600 opacity-10 rounded-b-[50%]" style={{zIndex: 0}}></div>
+
+            <div className="relative z-10">
+               {/* LOGO SECTION */}
+               <div className="w-28 h-28 mx-auto mb-6 bg-white rounded-full p-2 shadow-lg flex items-center justify-center border-4 border-emerald-50">
+                  <img 
+                    src="https://img.freepik.com/premium-vector/quran-logo-vector-islamic-logo-vector-book-logo_969860-262.jpg" 
+                    alt="شعار فذكر" 
+                    className="w-full h-full object-cover rounded-full"
+                  />
+               </div>
+
+               <h2 className="text-3xl font-bold font-amiri text-emerald-800 mb-2">فَذَكِّر</h2>
+               <p className="text-sm text-slate-500 mb-8">إصدار 1.0.0</p>
+
+               {/* DEDICATION TEXT */}
+               <div className="bg-slate-50 rounded-xl p-4 mb-6 border border-slate-100">
+                  <p className="font-amiri font-bold text-slate-700 text-lg leading-loose mb-2">
+                    اللهم اغفر لوالديَّ وارحمهما كما ربَّياني صغيرًا.
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    صدقةٌ جاريةٌ لوالديَّ، عن أمواتِنا وأمواتِ المسلمين.
+                  </p>
+               </div>
+
+               {/* COPYRIGHT */}
+               <div className="text-xs text-slate-400 space-y-1">
+                 <p>© حقوق النشر: أحمد عبد الفتاح</p>
+                 <p className="font-mono">abdelfttah71@gmail.com</p>
+               </div>
+               
+               <div className="flex gap-2 justify-center mt-6">
+                 {!user.isGuest && (
+                   <button 
+                     onClick={handleLogout}
+                     className="px-6 py-3 bg-red-50 text-red-600 rounded-xl font-bold text-xs border border-red-100"
+                   >
+                     تسجيل الخروج
+                   </button>
+                 )}
+                 <button 
+                   onClick={() => setShowInfoModal(false)}
+                   className="px-8 py-3 bg-slate-800 text-white rounded-xl font-bold text-xs shadow-lg shadow-slate-200"
+                 >
+                   إغلاق
+                 </button>
+               </div>
+
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
-}
-
-function getTitle(tab: string) {
-  switch (tab) {
-    case 'dhikr': return 'الأذكار';
-    case 'read': return 'القرآن الكريم';
-    case 'group': return 'مجموعتي';
-    default: return '';
-  }
 }
 
 export default App;

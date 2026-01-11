@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import * as React from 'react';
+import { useState, useEffect } from 'react';
 import { User, Group, ActivityLog, ActivityType, LocationSettings } from '../types';
 import { GOOD_DEEDS_CATEGORIES, PRAYERS_STRUCTURE } from '../constants';
 
@@ -109,11 +110,12 @@ interface TodayScreenProps {
   locationSettings: LocationSettings;
   updateLocationSettings: (settings: Partial<LocationSettings>) => void;
   updateMyLocation: (lat: number, lng: number, accuracyLabel: 'تقريبي' | 'دقيق') => void;
+  onNavigate: (tab: string) => void;
 }
 
 const TodayScreen: React.FC<TodayScreenProps> = ({ 
   user, group, logs, addLog, members, 
-  locationSettings, updateLocationSettings, updateMyLocation 
+  locationSettings, updateLocationSettings, updateMyLocation, onNavigate 
 }) => {
   const [showDeedModal, setShowDeedModal] = useState(false);
   const [showPrayerModal, setShowPrayerModal] = useState(false);
@@ -229,6 +231,39 @@ const TodayScreen: React.FC<TodayScreenProps> = ({
       <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg flex items-center gap-3 animate-fade-in">
         <span className="text-xl">💡</span>
         <p className="text-sm text-amber-800 font-medium">تذكير اليوم: جدد نيتك في كل عمل.</p>
+      </div>
+
+      {/* NEW DASHBOARD NAVIGATION */}
+      <div className="grid grid-cols-3 gap-3">
+        <button 
+          onClick={() => onNavigate('dhikr')}
+          className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm flex flex-col items-center justify-center gap-2 active:scale-95 transition-all hover:border-emerald-300 group"
+        >
+          <div className="w-12 h-12 bg-emerald-50 rounded-full flex items-center justify-center text-2xl group-hover:bg-emerald-100 transition-colors">
+            📿
+          </div>
+          <span className="text-sm font-bold text-slate-700">الأذكار</span>
+        </button>
+
+        <button 
+          onClick={() => onNavigate('read')}
+          className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm flex flex-col items-center justify-center gap-2 active:scale-95 transition-all hover:border-emerald-300 group"
+        >
+          <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center text-2xl group-hover:bg-blue-100 transition-colors">
+            📖
+          </div>
+          <span className="text-sm font-bold text-slate-700">أقرأ</span>
+        </button>
+
+        <button 
+          onClick={() => onNavigate('group')}
+          className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm flex flex-col items-center justify-center gap-2 active:scale-95 transition-all hover:border-emerald-300 group"
+        >
+          <div className="w-12 h-12 bg-purple-50 rounded-full flex items-center justify-center text-2xl group-hover:bg-purple-100 transition-colors">
+            👥
+          </div>
+          <span className="text-sm font-bold text-slate-700">المجموعة</span>
+        </button>
       </div>
 
       {/* Activity Ring Card */}
