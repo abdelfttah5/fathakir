@@ -1,7 +1,7 @@
 
 import { db, auth, isMockMode } from "../firebaseConfig";
 import { 
-  collection, doc, setDoc, getDoc, updateDoc, 
+  collection, doc, setDoc, getDoc, updateDoc, deleteDoc,
   query, where, getDocs, onSnapshot, orderBy, limit 
 } from "firebase/firestore";
 import { 
@@ -37,7 +37,6 @@ const getLocal = (key: string) => {
     return item ? JSON.parse(item) : [];
   } catch (e) {
     console.error(`Error parsing local storage for key ${key}`, e);
-    // Safety: Don't overwrite with empty array immediately on read error to prevent data loss
     return [];
   }
 };
@@ -55,7 +54,6 @@ const forceSaveToLocalLog = (groupId: string, log: ActivityLog) => {
     let logs = getLocal(MOCK_STORAGE_KEYS.LOGS_DB);
     if (!Array.isArray(logs)) logs = [];
     const logWithGroup = { ...log, groupId };
-    // Avoid duplicates if trying to save same ID
     const exists = logs.findIndex((l: any) => l.id === log.id);
     if (exists > -1) {
         logs[exists] = logWithGroup;
@@ -183,7 +181,6 @@ export const loginGuestUser = async (): Promise<User> => {
     throw new Error("Guest login failed");
   } catch (error) {
     console.error("Firebase Guest Login Error", error);
-    // FALLBACK TO MOCK IF FIREBASE AUTH FAILS IN PROD
     const id = 'guest_' + Date.now();
     const name = `زائر (غير متصل)`;
     const newUser: User = {
@@ -282,8 +279,27 @@ export const createGroupInFirestore = async (groupData: Group, creator: User) =>
     return true;
   } catch (error) {
     console.error("Error creating group in Firestore, but saved locally:", error);
-    return true; // Return true because we successfully saved locally
+    return true;
   }
+};
+
+export const updateGroupCode = async (groupId: string, newCode: string) => {
+    // 1. Mock Update
+    const groups = getLocal(MOCK_STORAGE_KEYS.GROUPS_DB);
+    const idx = groups.findIndex((g: Group) => g.id === groupId);
+    if (idx > -1) {
+        groups[idx].inviteCode = newCode;
+        setLocal(MOCK_STORAGE_KEYS.GROUPS_DB, groups);
+    }
+
+    if (isMockMode) return;
+
+    // 2. Real Update
+    try {
+        await updateDoc(doc(db, "groups", groupId), { inviteCode: newCode });
+    } catch (e) {
+        console.error("Failed to update group code in Firestore", e);
+    }
 };
 
 export const joinGroupInFirestore = async (inviteCode: string, user: User): Promise<Group | null> => {
@@ -314,6 +330,26 @@ export const joinGroupInFirestore = async (inviteCode: string, user: User): Prom
   }
 };
 
+export const leaveGroupInFirestore = async (userId: string, groupId: string) => {
+  // 1. Remove from Mock DB
+  const members = getLocal(MOCK_STORAGE_KEYS.MEMBERS_DB);
+  const newMembers = members.filter((m: any) => !(m.userId === userId && m.groupId === groupId));
+  setLocal(MOCK_STORAGE_KEYS.MEMBERS_DB, newMembers);
+  
+  if (isMockMode) return true;
+
+  // 2. Remove from Real Firestore
+  try {
+    // We construct the ID based on the logic in creation: groupId_userId
+    await deleteDoc(doc(db, "group_members", `${groupId}_${userId}`));
+    return true;
+  } catch (e) {
+    console.error("Error leaving group in Firestore:", e);
+    // Return false, but we already cleared local so UI might update anyway.
+    return false;
+  }
+};
+
 // ==========================================
 // REAL-TIME LISTENERS
 // ==========================================
@@ -322,7 +358,6 @@ export const subscribeToMembers = (groupId: string, callback: (members: User[]) 
   const fetchLocal = () => {
       const allMembers = getLocal(MOCK_STORAGE_KEYS.MEMBERS_DB);
       const groupMembers = allMembers.filter((m: any) => m.groupId === groupId);
-      // Ensure we always return at least something if it's a valid group ID
       if (groupMembers.length > 0) callback(groupMembers);
   };
 
@@ -358,9 +393,6 @@ export const subscribeToLogs = (groupId: string, callback: (logs: ActivityLog[])
         .sort((a: ActivityLog, b: ActivityLog) => b.timestamp - a.timestamp)
         .slice(0, 50);
       
-      // Critical fix for flicker: Only update callback if we found data, 
-      // or if it's the very first load. Don't overwrite existing UI with empty 
-      // if local storage read fails temporarily.
       callback(groupLogs);
   };
 
@@ -382,13 +414,9 @@ export const subscribeToLogs = (groupId: string, callback: (logs: ActivityLog[])
       snapshot.forEach((doc) => logs.push(doc.data() as ActivityLog));
       callback(logs);
     }, (error) => {
-      // FIX FLICKER: If Firestore permission denied or fails, immediately switch to local.
-      // And keep polling local to ensure new writes (which are forced to local) appear.
       console.warn("Firestore logs failed, switching to persistent local mode", error);
       fetchLocal();
       const interval = setInterval(fetchLocal, 2000);
-      // Note: We can't clear interval easily here as it's inside callback, 
-      // but React useEffect cleanup in App.tsx will handle the outer subscription.
     });
   } catch (e) {
     fetchLocal();
@@ -397,23 +425,19 @@ export const subscribeToLogs = (groupId: string, callback: (logs: ActivityLog[])
 };
 
 export const logActivityToFirestore = async (groupId: string, log: ActivityLog) => {
-  // 1. ALWAYS Save to local storage first (Sync backup)
   forceSaveToLocalLog(groupId, log);
 
   if (isMockMode) return;
 
-  // 2. Try Real Firebase
   try {
     const logWithGroup = { ...log, groupId };
     await setDoc(doc(db, "activity_logs", log.id), cleanUndefined(logWithGroup));
   } catch (e) {
     console.error("Failed to write log to Firestore. Data saved locally only.", e);
-    // Suppress alert to avoid annoying user, since we saved locally successfully.
   }
 };
 
 export const updateLocationInFirestore = async (groupId: string, point: LocationPoint) => {
-  // Always save local
   const locs = getLocal(MOCK_STORAGE_KEYS.LOCATIONS_DB);
   const filtered = locs.filter((p: any) => p.userId !== point.userId);
   filtered.push({ ...point, groupId });

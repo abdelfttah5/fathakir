@@ -3,6 +3,7 @@ import * as React from 'react';
 import { useState } from 'react';
 import { User, Group, ActivityLog, LocationPoint } from '../types';
 import { createGoogleMeetEvent } from '../services/api';
+import { updateGroupCode } from '../services/firebase';
 
 interface GroupScreenProps {
   user: User;
@@ -23,27 +24,32 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
   const [inviteCode, setInviteCode] = useState<string | null>(group.inviteCode || null);
   const [isScheduling, setIsScheduling] = useState(false);
 
+  const isAdmin = user.isAdmin || user.id === group.adminId;
+
   // --- LOGIC ---
-  const handleGenerateInvite = () => {
-    if (!user.isAdmin) return;
+  const handleGenerateInvite = async () => {
+    if (!isAdmin) return;
     const newCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+    
+    // Save to State and DB
     setInviteCode(newCode);
-    alert(`تم إنشاء رمز الدعوة: ${newCode} (صالح لمدة 72 ساعة)`);
+    await updateGroupCode(group.id, newCode);
+    
+    alert(`تم إنشاء وحفظ رمز الدعوة: ${newCode}`);
   };
 
   const handleCopyLink = () => {
     if (!inviteCode) return;
-    const dummyLink = `https://fathakkir.app/join?code=${inviteCode}`;
+    // Just a placeholder link format for now as requested in V1
+    const dummyLink = `انضم لمجموعتي في تطبيق فذكر باستخدام الرمز: ${inviteCode}`;
     navigator.clipboard.writeText(dummyLink);
-    alert('تم نسخ رابط الدعوة: ' + dummyLink);
+    alert('تم نسخ نص الدعوة: ' + dummyLink);
   };
 
   const handleCreateMeet = async (type: 'NOW' | 'SCHEDULED') => {
-    // Direct call creation logic since user is authenticated
     setIsScheduling(true);
     const startTime = new Date().toISOString();
     
-    // Simulate API call or use real link if available
     const link = await createGoogleMeetEvent(`مكالمة مجموعة ${group.name}`, startTime, 60, "simulated-token");
 
     if (link) {
@@ -92,7 +98,7 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
     <div className="p-4">
       <div className="flex items-center justify-between mb-6">
         <h2 className={`text-xl font-bold ${theme.text}`}>{group.name}</h2>
-        <span className={`text-xs px-2 py-1 rounded ${isDarkMode ? 'bg-[#333] text-gray-400' : 'bg-slate-100 text-slate-500'}`}>{group.id}</span>
+        <span className={`text-xs px-2 py-1 rounded ${isDarkMode ? 'bg-[#333] text-gray-400' : 'bg-slate-100 text-slate-500'}`}>{group.id.substring(0,8)}...</span>
       </div>
 
       {/* Tabs */}
@@ -190,28 +196,36 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
                <div key={m.id} className={`flex items-center gap-3 p-3 rounded-xl border ${theme.card}`}>
                   <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${isDarkMode ? 'bg-emerald-900/50 text-emerald-400' : 'bg-emerald-100 text-emerald-700'}`}>{m.name[0]}</div>
                   <span className={`font-bold ${theme.text}`}>{m.name} {m.id === user.id ? '(أنت)' : ''}</span>
-                  {m.isAdmin && <span className={`mr-auto text-[10px] px-2 py-1 rounded ${isDarkMode ? 'bg-[#333] text-gray-400' : 'bg-slate-100 text-slate-500'}`}>مشرف</span>}
+                  {(m.isAdmin || m.id === group.adminId) && <span className={`mr-auto text-[10px] px-2 py-1 rounded ${isDarkMode ? 'bg-[#333] text-gray-400' : 'bg-slate-100 text-slate-500'}`}>مشرف</span>}
                </div>
              ))}
            </div>
            
            {/* Admin & Invites */}
-           {user.isAdmin && (
+           {isAdmin && (
              <div className={`mt-8 pt-6 border-t ${isDarkMode ? 'border-[#333]' : 'border-slate-200'}`}>
-               <h3 className={`font-bold mb-3 ${theme.text}`}>إدارة الدعوات</h3>
+               <h3 className={`font-bold mb-3 ${theme.text}`}>إدارة الدعوات (أنت المشرف)</h3>
                {inviteCode ? (
                  <div className={`p-4 rounded-xl text-center ${isDarkMode ? 'bg-[#2a2a2a]' : 'bg-slate-50'}`}>
                    <p className={`text-xs mb-1 ${theme.subText}`}>رمز الانضمام</p>
                    <p className={`text-3xl font-mono font-bold tracking-widest mb-4 select-all ${theme.text}`}>{inviteCode}</p>
                    <div className="flex gap-2 justify-center">
                      <button onClick={() => { navigator.clipboard.writeText(inviteCode); alert('تم نسخ الرمز'); }} className={`border py-2 px-6 rounded-lg text-sm font-bold flex-1 ${isDarkMode ? 'bg-[#333] border-[#444] text-white' : 'bg-white border-slate-300 text-slate-700'}`}>نسخ الرمز</button>
-                     <button onClick={handleCopyLink} className={`py-2 px-6 rounded-lg text-sm font-bold flex-1 ${isDarkMode ? 'bg-emerald-700 text-white' : 'bg-emerald-600 text-white'}`}>نسخ الرابط</button>
+                     <button onClick={handleCopyLink} className={`py-2 px-6 rounded-lg text-sm font-bold flex-1 ${isDarkMode ? 'bg-emerald-700 text-white' : 'bg-emerald-600 text-white'}`}>نسخ النص</button>
                    </div>
+                   <p className={`text-[10px] mt-3 ${theme.subText}`}>أخبر عائلتك بتحميل التطبيق واختيار "انضمام لمجموعة" ثم إدخال هذا الرمز.</p>
                  </div>
                ) : (
-                 <button onClick={handleGenerateInvite} className={`w-full py-3 rounded-xl font-bold ${isDarkMode ? 'bg-emerald-700 text-white' : 'bg-slate-800 text-white'}`}>إنشاء دعوة جديدة</button>
+                 <button onClick={handleGenerateInvite} className={`w-full py-3 rounded-xl font-bold shadow-lg ${isDarkMode ? 'bg-emerald-700 text-white shadow-emerald-900/50' : 'bg-slate-800 text-white shadow-slate-300'}`}>✨ إنشاء رمز دعوة الآن</button>
                )}
              </div>
+           )}
+
+           {/* Instructions for Non-Admins if code exists */}
+           {!isAdmin && inviteCode && (
+              <div className={`mt-4 p-4 rounded-xl text-center text-xs ${isDarkMode ? 'bg-blue-900/20 text-blue-300' : 'bg-blue-50 text-blue-800'}`}>
+                 رمز المجموعة: <strong>{inviteCode}</strong> (شارك هذا الرمز مع من تريد إضافته)
+              </div>
            )}
 
            {/* Separate Buttons for Leave and Create */}

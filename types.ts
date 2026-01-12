@@ -26,6 +26,7 @@ export interface Group {
   id: string;
   name: string;
   timezone: string;
+  adminId?: string; // Added to track ownership
   inviteCode?: string;
   inviteExpiresAt?: number;
   inviteMaxUses?: number;

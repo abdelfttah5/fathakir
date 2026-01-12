@@ -16,7 +16,8 @@ import {
   logActivityToFirestore,
   updateLocationInFirestore,
   logoutUser,
-  observeAuthState
+  observeAuthState,
+  leaveGroupInFirestore // New Import
 } from './services/firebase';
 
 // FIX: Defined outside component to prevent re-mounting on every state change
@@ -147,14 +148,22 @@ function App() {
     }
   };
 
-  const handleLeaveGroup = () => {
-    // Clear local membership to reset flow
-    if (user) {
-        const members = JSON.parse(localStorage.getItem('f_members') || '[]');
-        const newMembers = members.filter((m: any) => m.userId !== user.id);
-        localStorage.setItem('f_members', JSON.stringify(newMembers));
-        setGroup({ id: 'guest_space', name: 'مساحتي الخاصة', timezone: 'Asia/Muscat' });
-        setActiveTab('group');
+  const handleLeaveGroup = async () => {
+    if (user && group && group.id !== 'guest_space') {
+       // Call the Service to remove from DB/Firestore
+       await leaveGroupInFirestore(user.id, group.id);
+       
+       // Force update local state immediately
+       const members = JSON.parse(localStorage.getItem('f_members') || '[]');
+       const newMembers = members.filter((m: any) => m.userId !== user.id);
+       localStorage.setItem('f_members', JSON.stringify(newMembers));
+       
+       // Reset Group State
+       setGroup({ id: 'guest_space', name: 'مساحتي الخاصة', timezone: 'Asia/Muscat' });
+       setActiveTab('group');
+       
+       // Optional: Reload to ensure clean slate from Onboarding
+       // window.location.reload(); 
     }
   };
 
