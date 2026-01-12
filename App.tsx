@@ -69,6 +69,7 @@ function App() {
         setUser(mappedUser);
         setLocationSettings(prev => ({ ...prev, userId: mappedUser.id }));
         
+        // Try to recover group from local storage membership mapping
         const storedMembers = JSON.parse(localStorage.getItem('f_members') || '[]');
         const membership = storedMembers.find((m: any) => m.userId === mappedUser.id);
         if (membership) {
@@ -143,6 +144,17 @@ function App() {
       await logoutUser();
       localStorage.removeItem('fathakkir_guest_fallback');
       window.location.reload();
+    }
+  };
+
+  const handleLeaveGroup = () => {
+    // Clear local membership to reset flow
+    if (user) {
+        const members = JSON.parse(localStorage.getItem('f_members') || '[]');
+        const newMembers = members.filter((m: any) => m.userId !== user.id);
+        localStorage.setItem('f_members', JSON.stringify(newMembers));
+        setGroup({ id: 'guest_space', name: 'مساحتي الخاصة', timezone: 'Asia/Muscat' });
+        setActiveTab('group');
     }
   };
 
@@ -248,6 +260,7 @@ function App() {
               locationPoints={locationPoints}
               googleAccessToken={googleAccessToken}
               setGoogleAccessToken={setGoogleAccessToken}
+              onLeaveGroup={handleLeaveGroup}
               isDarkMode={isDarkMode}
             />
           </ScrollWrapper>
@@ -327,7 +340,7 @@ function App() {
                   </svg>
                </div>
                <h2 className="text-3xl font-bold font-amiri mb-2">فَذَكِّر</h2>
-               <p className="text-sm opacity-50 mb-8">إصدار 1.0.5</p>
+               <p className="text-sm opacity-50 mb-8">إصدار 1.0.6</p>
                <div className={`rounded-xl p-4 mb-6 border ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-100'}`}>
                   <p className="font-amiri font-bold text-lg leading-loose mb-2">
                     اللهم اغفر لوالديَّ وارحمهما كما ربَّياني صغيرًا.

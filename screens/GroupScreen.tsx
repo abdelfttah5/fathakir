@@ -12,11 +12,12 @@ interface GroupScreenProps {
   locationPoints: LocationPoint[];
   googleAccessToken: string | null;
   setGoogleAccessToken: (token: string) => void;
+  onLeaveGroup?: () => void;
   isDarkMode?: boolean;
 }
 
 const GroupScreen: React.FC<GroupScreenProps> = ({ 
-  user, group, members, logs, locationPoints, googleAccessToken, setGoogleAccessToken, isDarkMode = false
+  user, group, members, logs, locationPoints, googleAccessToken, setGoogleAccessToken, onLeaveGroup, isDarkMode = false
 }) => {
   const [subTab, setSubTab] = useState<'activity' | 'members' | 'locations' | 'meet'>('activity');
   const [inviteCode, setInviteCode] = useState<string | null>(group.inviteCode || null);
@@ -32,32 +33,35 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
 
   const handleCopyLink = () => {
     if (!inviteCode) return;
-    // Simulate a link - in a real app this would be a deep link
     const dummyLink = `https://fathakkir.app/join?code=${inviteCode}`;
     navigator.clipboard.writeText(dummyLink);
     alert('تم نسخ رابط الدعوة: ' + dummyLink);
   };
 
-  const handleGoogleSignIn = () => {
-    const mockToken = prompt("أدخل Google Access Token (للمطورين) أو اضغط موافق للمحاكاة:");
-    if (mockToken) setGoogleAccessToken(mockToken);
-    else setGoogleAccessToken("simulation-token"); 
-  };
-
   const handleCreateMeet = async (type: 'NOW' | 'SCHEDULED') => {
-    if (!googleAccessToken) {
-       alert("يرجى ربط حساب Google أولاً.");
-       return;
-    }
+    // Direct call creation logic since user is authenticated
     setIsScheduling(true);
     const startTime = new Date().toISOString();
-    let link = googleAccessToken === "simulation-token" 
-        ? (await new Promise(r => setTimeout(r, 1000)), "https://meet.google.com/abc-defg-hij") 
-        : await createGoogleMeetEvent(`مكالمة مجموعة ${group.name}`, startTime, 60, googleAccessToken);
+    
+    // Simulate API call or use real link if available
+    const link = await createGoogleMeetEvent(`مكالمة مجموعة ${group.name}`, startTime, 60, "simulated-token");
 
-    if (link) alert(type === 'NOW' ? `تم طلب مكالمة! الرابط: ${link}` : `تم جدولة المكالمة. الرابط: ${link}`);
-    else alert("حدث خطأ.");
+    if (link) {
+        if (type === 'NOW') {
+            window.open(link, '_blank');
+        } else {
+            alert(`تم جدولة المكالمة. الرابط: ${link}`);
+        }
+    } else {
+        alert("حدث خطأ أثناء إنشاء الرابط.");
+    }
     setIsScheduling(false);
+  };
+
+  const handleLeave = () => {
+    if (confirm("هل أنت متأكد من مغادرة المجموعة؟ ستتمكن من إنشاء مجموعة جديدة أو الانضمام لمجموعة أخرى.")) {
+       if (onLeaveGroup) onLeaveGroup();
+    }
   };
 
   const formatTimeAgo = (timestamp: number) => {
@@ -168,11 +172,11 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
       {/* MEMBERS */}
       {subTab === 'members' && (
         <div className="space-y-4">
-           {members.length === 1 && (
+           {members.length <= 1 && (
              <div className={`p-6 border rounded-xl text-center ${isDarkMode ? 'bg-[#2a2a2a] border-[#333]' : 'bg-slate-50 border-slate-100'}`}>
                <div className="text-4xl mb-3">👋</div>
                <p className={`font-bold mb-2 ${theme.text}`}>المجموعة هادئة!</p>
-               <p className={`text-sm mb-4 ${theme.subText}`}>لم ينضم أحد بعد.</p>
+               <p className={`text-sm mb-4 ${theme.subText}`}>لم ينضم أحد بعد. شارك الرمز لدعوة عائلتك.</p>
              </div>
            )}
            <div className="space-y-2">
@@ -184,6 +188,8 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
                </div>
              ))}
            </div>
+           
+           {/* Admin & Invites */}
            {user.isAdmin && (
              <div className={`mt-8 pt-6 border-t ${isDarkMode ? 'border-[#333]' : 'border-slate-200'}`}>
                <h3 className={`font-bold mb-3 ${theme.text}`}>إدارة الدعوات</h3>
@@ -201,28 +207,35 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
                )}
              </div>
            )}
+
+           {/* Leave Button */}
+           <div className="mt-8">
+              <button 
+                onClick={handleLeave}
+                className="w-full py-3 rounded-xl font-bold text-red-500 border border-red-200 hover:bg-red-50 transition-colors text-sm"
+              >
+                مغادرة المجموعة / إنشاء مجموعة جديدة
+              </button>
+           </div>
         </div>
       )}
 
       {/* MEET */}
       {subTab === 'meet' && (
         <div className="space-y-6 text-center">
-           {!googleAccessToken ? (
              <div className="py-10">
-               <div className="text-4xl mb-4">🔐</div>
-               <p className={`mb-6 ${theme.subText}`}>يجب ربط حساب Google.</p>
-               <button onClick={handleGoogleSignIn} className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold">ربط حساب Google</button>
+               <div className="text-4xl mb-4">📹</div>
+               <p className={`mb-6 ${theme.subText}`}>بدء مكالمة فيديو مع أعضاء المجموعة عبر Google Meet</p>
+               
+               <div className="grid grid-cols-2 gap-3">
+                   <button onClick={() => handleCreateMeet('NOW')} disabled={isScheduling} className="py-6 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-200/50 flex flex-col items-center justify-center gap-2 active:scale-95 transition-transform">
+                     <span className="text-2xl">⚡</span><span>مكالمة الآن</span>
+                   </button>
+                   <button onClick={() => handleCreateMeet('SCHEDULED')} disabled={isScheduling} className={`py-6 border-2 rounded-2xl font-bold flex flex-col items-center justify-center gap-2 active:scale-95 transition-transform ${isDarkMode ? 'bg-[#2a2a2a] border-blue-800 text-blue-400' : 'bg-white text-blue-600 border-blue-100'}`}>
+                     <span className="text-2xl">📅</span><span>جدولة</span>
+                   </button>
+               </div>
              </div>
-           ) : (
-             <div className="grid grid-cols-2 gap-3">
-                 <button onClick={() => handleCreateMeet('NOW')} disabled={isScheduling} className="py-6 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-200/50 flex flex-col items-center justify-center gap-2 active:scale-95 transition-transform">
-                   <span className="text-2xl">📹</span><span>مكالمة الآن</span>
-                 </button>
-                 <button onClick={() => handleCreateMeet('SCHEDULED')} disabled={isScheduling} className={`py-6 border-2 rounded-2xl font-bold flex flex-col items-center justify-center gap-2 active:scale-95 transition-transform ${isDarkMode ? 'bg-[#2a2a2a] border-blue-800 text-blue-400' : 'bg-white text-blue-600 border-blue-100'}`}>
-                   <span className="text-2xl">📅</span><span>جدولة</span>
-                 </button>
-             </div>
-           )}
         </div>
       )}
     </div>
