@@ -30,6 +30,14 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
     alert(`تم إنشاء رمز الدعوة: ${newCode} (صالح لمدة 72 ساعة)`);
   };
 
+  const handleCopyLink = () => {
+    if (!inviteCode) return;
+    // Simulate a link - in a real app this would be a deep link
+    const dummyLink = `https://fathakkir.app/join?code=${inviteCode}`;
+    navigator.clipboard.writeText(dummyLink);
+    alert('تم نسخ رابط الدعوة: ' + dummyLink);
+  };
+
   const handleGoogleSignIn = () => {
     const mockToken = prompt("أدخل Google Access Token (للمطورين) أو اضغط موافق للمحاكاة:");
     if (mockToken) setGoogleAccessToken(mockToken);
@@ -183,7 +191,10 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
                  <div className={`p-4 rounded-xl text-center ${isDarkMode ? 'bg-[#2a2a2a]' : 'bg-slate-50'}`}>
                    <p className={`text-xs mb-1 ${theme.subText}`}>رمز الانضمام</p>
                    <p className={`text-3xl font-mono font-bold tracking-widest mb-4 select-all ${theme.text}`}>{inviteCode}</p>
-                   <button onClick={() => { navigator.clipboard.writeText(inviteCode); alert('تم النسخ'); }} className={`border py-2 px-6 rounded-lg text-sm font-bold ${isDarkMode ? 'bg-[#333] border-[#444] text-white' : 'bg-white border-slate-300 text-slate-700'}`}>نسخ</button>
+                   <div className="flex gap-2 justify-center">
+                     <button onClick={() => { navigator.clipboard.writeText(inviteCode); alert('تم نسخ الرمز'); }} className={`border py-2 px-6 rounded-lg text-sm font-bold flex-1 ${isDarkMode ? 'bg-[#333] border-[#444] text-white' : 'bg-white border-slate-300 text-slate-700'}`}>نسخ الرمز</button>
+                     <button onClick={handleCopyLink} className={`py-2 px-6 rounded-lg text-sm font-bold flex-1 ${isDarkMode ? 'bg-emerald-700 text-white' : 'bg-emerald-600 text-white'}`}>نسخ الرابط</button>
+                   </div>
                  </div>
                ) : (
                  <button onClick={handleGenerateInvite} className={`w-full py-3 rounded-xl font-bold ${isDarkMode ? 'bg-emerald-700 text-white' : 'bg-slate-800 text-white'}`}>إنشاء دعوة جديدة</button>

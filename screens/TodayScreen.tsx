@@ -123,7 +123,7 @@ const TodayScreen: React.FC<TodayScreenProps> = ({
   const [showDeedModal, setShowDeedModal] = useState(false);
   const [showPrayerModal, setShowPrayerModal] = useState(false);
   const [showTimesModal, setShowTimesModal] = useState(false);
-  const [showReportModal, setShowReportModal] = useState(false); // NEW REPORT MODAL
+  const [showReportModal, setShowReportModal] = useState(false); 
   
   const [activeDeedTab, setActiveDeedTab] = useState(GOOD_DEEDS_CATEGORIES[0].value);
   const [customDeed, setCustomDeed] = useState('');
@@ -149,13 +149,11 @@ const TodayScreen: React.FC<TodayScreenProps> = ({
   });
 
   const completedPrayers = todayLogs.filter(l => l.type === ActivityType.PRAYER && l.summary.includes('أدى صلاة')).map(l => {
-     // Extract prayer name from summary "أدى صلاة الظهر" -> "الظهر"
      const match = l.summary.match(/أدى صلاة (.+)/);
      return match ? match[1] : '';
   });
 
   const dhikrCount = todayLogs.filter(l => l.type === ActivityType.DHIKR).length;
-  const quranCount = todayLogs.filter(l => l.type === ActivityType.QURAN).length;
   const goodDeedsCount = todayLogs.filter(l => l.type === ActivityType.GOOD_DEED).length;
 
   useEffect(() => {
@@ -210,6 +208,13 @@ const TodayScreen: React.FC<TodayScreenProps> = ({
     setCustomDeed('');
   };
 
+  const handleSaveCustomDeed = () => {
+    if (!customDeed.trim()) return;
+    addLog(ActivityType.GOOD_DEED, `سجّل عملًا خاصًا: ${customDeed}`, undefined, activeDeedTab);
+    setShowDeedModal(false);
+    setCustomDeed('');
+  };
+
   const handleRecordPrayer = (name: string, type: 'FARD' | 'SUNNAH') => {
     const summary = type === 'FARD' ? `أدى صلاة ${name}` : `أدى ${name}`;
     addLog(ActivityType.PRAYER, summary);
@@ -221,13 +226,13 @@ const TodayScreen: React.FC<TodayScreenProps> = ({
   return (
     <div className="p-4 space-y-4 pb-20">
       
-      {/* Date Header - Boxed & Colored */}
+      {/* Date Header */}
       <div className={`p-5 rounded-3xl shadow-sm text-center border ${isDarkMode ? 'bg-gradient-to-r from-teal-900/50 to-emerald-900/50 border-teal-800' : 'bg-gradient-to-r from-teal-50 to-emerald-50 border-teal-100'}`}>
         <h2 className={`text-2xl font-bold font-amiri mb-1 ${isDarkMode ? 'text-teal-200' : 'text-teal-900'}`}>{dateStr}</h2>
         <p className={`text-sm opacity-90 font-amiri ${isDarkMode ? 'text-teal-400' : 'text-teal-700'}`}>{hijriStr}</p>
       </div>
 
-      {/* Reminder - Colored */}
+      {/* Reminder */}
       <div className={`p-4 rounded-3xl flex items-start gap-3 shadow-sm border transition-all ${isDarkMode ? 'bg-gradient-to-br from-amber-900/40 to-orange-900/40 border-amber-800' : 'bg-gradient-to-br from-amber-50 to-orange-50 border-amber-100'}`}>
         <span className="text-xl mt-1">✨</span>
         <div>
@@ -238,14 +243,14 @@ const TodayScreen: React.FC<TodayScreenProps> = ({
         </div>
       </div>
 
-      {/* Activity Ring Card - Colored */}
+      {/* Activity Ring */}
       <div className={`rounded-3xl p-4 border flex items-center justify-between backdrop-blur-sm transition-all ${isDarkMode ? 'bg-gradient-to-br from-indigo-900/40 to-blue-900/40 border-indigo-800' : 'bg-gradient-to-br from-indigo-50 to-blue-50 border-indigo-100'}`}>
          <div className="flex-1">
              <h2 className={`text-sm font-bold mb-1 ${isDarkMode ? 'text-indigo-200' : 'text-indigo-900'}`}>نشاطك اليومي</h2>
              <p className={`text-[10px] mb-3 ${isDarkMode ? 'text-indigo-300' : 'text-indigo-600/80'}`}>اضغط على الحلقة للتفاصيل</p>
              <button 
                 onClick={() => setShowReportModal(true)} 
-                className={`text-xs px-3 py-1.5 rounded-xl font-bold transition-colors shadow-sm animate-pulse ${isDarkMode ? 'bg-indigo-600 text-white border border-indigo-500' : 'bg-indigo-600 text-white border border-indigo-500 hover:bg-indigo-700'}`}
+                className={`text-xs px-3 py-1.5 rounded-xl font-bold transition-colors shadow-sm ${isDarkMode ? 'bg-indigo-600 text-white border border-indigo-500 hover:bg-indigo-500' : 'bg-indigo-600 text-white border border-indigo-500 hover:bg-indigo-700'}`}
              >
                 📊 حصاد اليوم
              </button>
@@ -255,9 +260,8 @@ const TodayScreen: React.FC<TodayScreenProps> = ({
          </div>
       </div>
 
-      {/* CIRCULAR MAIN BUTTONS GRID (2x2) - Colored Backgrounds */}
+      {/* Buttons Grid */}
       <div className="grid grid-cols-2 gap-4 my-6 justify-items-center">
-        {/* Dhikr Button - Emerald Gradient */}
         <button 
           onClick={() => onNavigate('dhikr')}
           className={`w-24 h-24 rounded-full border shadow-sm flex flex-col items-center justify-center gap-2 active:scale-95 transition-all group hover:shadow-md ${isDarkMode ? 'bg-gradient-to-br from-emerald-900 to-teal-900 border-emerald-800' : 'bg-gradient-to-br from-emerald-50 to-teal-50 border-emerald-100'}`}
@@ -266,7 +270,6 @@ const TodayScreen: React.FC<TodayScreenProps> = ({
           <span className={`text-xs font-bold ${isDarkMode ? 'text-emerald-200' : 'text-emerald-800'}`}>الأذكار</span>
         </button>
 
-        {/* Read Button - Amber Gradient */}
         <button 
           onClick={() => onNavigate('read')}
           className={`w-24 h-24 rounded-full border shadow-sm flex flex-col items-center justify-center gap-2 active:scale-95 transition-all group hover:shadow-md ${isDarkMode ? 'bg-gradient-to-br from-amber-900 to-orange-900 border-amber-800' : 'bg-gradient-to-br from-amber-50 to-orange-50 border-amber-100'}`}
@@ -275,7 +278,6 @@ const TodayScreen: React.FC<TodayScreenProps> = ({
           <span className={`text-xs font-bold ${isDarkMode ? 'text-amber-200' : 'text-amber-900'}`}>أقرأ</span>
         </button>
 
-        {/* Group Button - Violet Gradient */}
         <button 
           onClick={() => onNavigate('group')}
           className={`w-24 h-24 rounded-full border shadow-sm flex flex-col items-center justify-center gap-2 active:scale-95 transition-all group hover:shadow-md ${isDarkMode ? 'bg-gradient-to-br from-violet-900 to-purple-900 border-violet-800' : 'bg-gradient-to-br from-violet-50 to-purple-50 border-violet-100'}`}
@@ -284,7 +286,6 @@ const TodayScreen: React.FC<TodayScreenProps> = ({
           <span className={`text-xs font-bold ${isDarkMode ? 'text-violet-200' : 'text-violet-900'}`}>المجموعة</span>
         </button>
 
-        {/* PRAYER TIMES Button - Sky Gradient */}
         <button 
           onClick={() => setShowTimesModal(true)}
           className={`w-24 h-24 rounded-full border shadow-sm flex flex-col items-center justify-center gap-2 active:scale-95 transition-all group hover:shadow-md ${isDarkMode ? 'bg-gradient-to-br from-sky-900 to-cyan-900 border-sky-800' : 'bg-gradient-to-br from-sky-50 to-cyan-50 border-sky-100'}`}
@@ -294,9 +295,8 @@ const TodayScreen: React.FC<TodayScreenProps> = ({
         </button>
       </div>
 
-      {/* Main Actions - Distinct Colors */}
+      {/* Main Actions */}
       <div className="grid grid-cols-2 gap-3">
-        {/* Good Deed - Blue Gradient */}
         <button
           onClick={() => setShowDeedModal(true)}
           className="col-span-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white h-14 rounded-2xl font-bold text-lg shadow-lg shadow-blue-200/50 active:scale-95 transition-transform flex items-center justify-center gap-2"
@@ -305,7 +305,6 @@ const TodayScreen: React.FC<TodayScreenProps> = ({
           <span>تسجيل عمل صالح</span>
         </button>
 
-        {/* Record Prayer - Rose Gradient (Faint) */}
         <button 
           onClick={() => setShowPrayerModal(true)} 
           className={`p-4 border rounded-2xl font-bold transition-colors shadow-sm ${isDarkMode ? 'bg-gradient-to-br from-rose-900/40 to-pink-900/40 border-rose-800 text-rose-200' : 'bg-gradient-to-br from-rose-50 to-pink-50 border-rose-100 text-rose-700 hover:from-rose-100 hover:to-pink-100'}`}
@@ -313,7 +312,6 @@ const TodayScreen: React.FC<TodayScreenProps> = ({
             🕌 سجل الصلاة
         </button>
 
-        {/* Tracking - Emerald Gradient (Faint) */}
         <button 
           onClick={() => updateLocationSettings({ mode: locationSettings.mode === 'OFF' ? 'AUTO_ON_OPEN' : 'OFF' })}
           className={`p-4 rounded-2xl font-bold transition-colors shadow-sm border ${
@@ -326,15 +324,13 @@ const TodayScreen: React.FC<TodayScreenProps> = ({
         </button>
       </div>
 
-      {/* --- DAILY REPORT MODAL (NEW) --- */}
+      {/* --- REPORT MODAL --- */}
       {showReportModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-fade-in" onClick={() => setShowReportModal(false)}>
           <div className={`w-full max-w-sm rounded-3xl p-6 shadow-2xl overflow-hidden relative ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-white text-slate-800'}`} onClick={e => e.stopPropagation()}>
             <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-emerald-400 to-blue-500"></div>
-            
             <h3 className="text-xl font-bold text-center mb-6 mt-2">📊 حصاد اليوم</h3>
             
-            {/* Stats Summary */}
             <div className="grid grid-cols-3 gap-2 mb-6 text-center">
               <div className={`p-3 rounded-2xl ${isDarkMode ? 'bg-emerald-900/30' : 'bg-emerald-50'}`}>
                  <div className="text-2xl mb-1">📿</div>
@@ -353,7 +349,6 @@ const TodayScreen: React.FC<TodayScreenProps> = ({
               </div>
             </div>
 
-            {/* Prayer Checklist */}
             <div className={`rounded-xl p-4 mb-6 border ${isDarkMode ? 'bg-slate-700/50 border-slate-600' : 'bg-slate-50 border-slate-100'}`}>
                <h4 className="text-sm font-bold mb-3 border-b pb-2 opacity-80 border-slate-200/20">تفقد الصلوات</h4>
                <div className="space-y-2">
@@ -371,13 +366,6 @@ const TodayScreen: React.FC<TodayScreenProps> = ({
                </div>
             </div>
 
-            {/* Closing Message */}
-            <div className={`p-3 text-center rounded-xl text-sm font-amiri leading-loose ${isDarkMode ? 'bg-indigo-900/20 text-indigo-300' : 'bg-indigo-50 text-indigo-800'}`}>
-               {completedPrayers.length === 5 
-                 ? "ما شاء الله! يوم مبارك وعمل متقبل بإذن الله." 
-                 : "تقبل الله منك، حاول إكمال صلواتك ووردك قبل نهاية اليوم."}
-            </div>
-
             <button onClick={() => setShowReportModal(false)} className="w-full mt-6 py-3 rounded-xl bg-slate-200 text-slate-800 font-bold hover:bg-slate-300 transition-colors">
               إغلاق
             </button>
@@ -389,13 +377,11 @@ const TodayScreen: React.FC<TodayScreenProps> = ({
       {showTimesModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-fade-in" onClick={() => setShowTimesModal(false)}>
            <div className={`w-full max-w-sm rounded-3xl p-6 shadow-2xl overflow-hidden relative ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-white text-slate-800'}`} onClick={e => e.stopPropagation()}>
-              
               <div className="flex justify-between items-center mb-6 border-b pb-4 border-slate-200/20">
                  <h3 className="text-xl font-bold">مواقيت الصلاة 🕌</h3>
                  <button onClick={() => setShowTimesModal(false)} className="w-8 h-8 rounded-full bg-slate-200/20 flex items-center justify-center">✕</button>
               </div>
 
-              {/* Location Selectors */}
               <div className="flex gap-2 mb-6">
                  <select 
                    value={selectedCountry.code} 
@@ -403,7 +389,7 @@ const TodayScreen: React.FC<TodayScreenProps> = ({
                      const c = COUNTRIES.find(x => x.code === e.target.value);
                      if (c) {
                        setSelectedCountry(c);
-                       setSelectedCity(c.cities[0]); // Reset city
+                       setSelectedCity(c.cities[0]); 
                      }
                    }}
                    className={`flex-1 p-2 rounded-lg text-sm font-bold outline-none ${isDarkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}
@@ -426,30 +412,14 @@ const TodayScreen: React.FC<TodayScreenProps> = ({
                  </div>
               ) : prayerTimes ? (
                  <div className="space-y-3">
-                    <div className={`flex justify-between items-center p-3 rounded-xl ${isDarkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                       <span className="font-bold">الفجر</span>
-                       <span className="font-mono text-emerald-500 font-bold">{prayerTimes.Fajr}</span>
-                    </div>
-                    <div className={`flex justify-between items-center p-3 rounded-xl ${isDarkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                       <span className="font-bold">الشروق</span>
-                       <span className="font-mono opacity-60">{prayerTimes.Sunrise}</span>
-                    </div>
-                    <div className={`flex justify-between items-center p-3 rounded-xl ${isDarkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                       <span className="font-bold">الظهر</span>
-                       <span className="font-mono text-emerald-500 font-bold">{prayerTimes.Dhuhr}</span>
-                    </div>
-                    <div className={`flex justify-between items-center p-3 rounded-xl ${isDarkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                       <span className="font-bold">العصر</span>
-                       <span className="font-mono text-emerald-500 font-bold">{prayerTimes.Asr}</span>
-                    </div>
-                    <div className={`flex justify-between items-center p-3 rounded-xl ${isDarkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                       <span className="font-bold">المغرب</span>
-                       <span className="font-mono text-emerald-500 font-bold">{prayerTimes.Maghrib}</span>
-                    </div>
-                    <div className={`flex justify-between items-center p-3 rounded-xl ${isDarkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                       <span className="font-bold">العشاء</span>
-                       <span className="font-mono text-emerald-500 font-bold">{prayerTimes.Isha}</span>
-                    </div>
+                    {['Fajr', 'Sunrise', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'].map((pName) => (
+                       <div key={pName} className={`flex justify-between items-center p-3 rounded-xl ${isDarkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                          <span className="font-bold">
+                            {pName === 'Fajr' ? 'الفجر' : pName === 'Sunrise' ? 'الشروق' : pName === 'Dhuhr' ? 'الظهر' : pName === 'Asr' ? 'العصر' : pName === 'Maghrib' ? 'المغرب' : 'العشاء'}
+                          </span>
+                          <span className={`font-mono font-bold ${pName === 'Sunrise' ? 'opacity-60' : 'text-emerald-500'}`}>{prayerTimes[pName]}</span>
+                       </div>
+                    ))}
                     <p className="text-[10px] text-center opacity-50 mt-4">حسب التوقيت المحلي لـ {selectedCity}، {selectedCountry.name}</p>
                  </div>
               ) : (
@@ -459,7 +429,7 @@ const TodayScreen: React.FC<TodayScreenProps> = ({
         </div>
       )}
 
-      {/* --- EXISTING MODALS (Record Prayer, Deeds) --- */}
+      {/* --- RECORD PRAYER MODAL --- */}
       {showPrayerModal && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowPrayerModal(false)}>
           <div className={`w-full max-w-md rounded-t-3xl p-6 animate-slide-up max-h-[85vh] overflow-y-auto ${isDarkMode ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}`} onClick={e => e.stopPropagation()}>
@@ -489,20 +459,42 @@ const TodayScreen: React.FC<TodayScreenProps> = ({
         </div>
       )}
 
+      {/* --- CUSTOM GOOD DEED MODAL (UPDATED) --- */}
       {showDeedModal && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowDeedModal(false)}>
           <div className={`w-full max-w-md h-[80vh] rounded-t-3xl flex flex-col animate-slide-up shadow-2xl ${isDarkMode ? 'bg-slate-900 text-white' : 'bg-white text-slate-800'}`} onClick={e => e.stopPropagation()}>
             <div className="p-6 pb-2 shrink-0">
                <div className="w-12 h-1 bg-slate-400/30 rounded-full mx-auto mb-4"></div>
                <h3 className="text-xl font-bold text-center mb-4">تسجيل عمل صالح</h3>
-               <div className={`flex p-1 rounded-xl ${isDarkMode ? 'bg-slate-800' : 'bg-slate-100'}`}>
+               
+               {/* Categories Tab */}
+               <div className={`flex p-1 rounded-xl mb-4 ${isDarkMode ? 'bg-slate-800' : 'bg-slate-100'}`}>
                  {GOOD_DEEDS_CATEGORIES.map((cat) => (
                    <button key={cat.value} onClick={() => setActiveDeedTab(cat.value)} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${activeDeedTab === cat.value ? (isDarkMode ? 'bg-slate-700 text-sky-400 shadow-sm' : 'bg-white text-sky-700 shadow-sm') : 'text-slate-500'}`}>
                      {cat.label.split('/')[0]} 
                    </button>
                  ))}
                </div>
+
+               {/* NEW: Custom Input Field */}
+               <div className="flex gap-2 mb-2">
+                 <input 
+                    type="text" 
+                    value={customDeed}
+                    onChange={(e) => setCustomDeed(e.target.value)}
+                    placeholder="أو اكتب عملك الصالح هنا..."
+                    className={`flex-1 p-3 text-sm rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-800'}`}
+                 />
+                 <button 
+                    onClick={handleSaveCustomDeed}
+                    disabled={!customDeed.trim()}
+                    className="px-4 bg-emerald-600 text-white rounded-xl font-bold text-sm disabled:opacity-50"
+                 >
+                    حفظ
+                 </button>
+               </div>
             </div>
+
             <div className="flex-1 overflow-y-auto p-4 pt-2">
                <div className="grid grid-cols-2 gap-3 mb-4">
                  {currentDeedCategory.items.map((item, idx) => (

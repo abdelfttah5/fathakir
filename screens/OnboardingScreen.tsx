@@ -68,12 +68,13 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete }) => {
           if (group) {
             onComplete(userObj, group);
           } else {
-            // Logged in but no group -> Go to Group Phase
+            // Logged in but no group -> Force Go to Group Phase
             setPhase('GROUP');
             setIsLoading(false);
           }
         } catch (err) {
           console.error(err);
+          // If error fetching group, still let them try to create one if user exists
            if (!currentUser && firebaseUser) {
               const u: User = {
                 id: firebaseUser.uid,
@@ -114,7 +115,9 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete }) => {
         if (!name) throw new Error("الرجاء إدخال الاسم");
         const user = await registerUser(email, password, name);
         setCurrentUser({ ...user, isGuest: false });
+        // FORCE PHASE CHANGE
         setPhase('GROUP'); 
+        setIsLoading(false);
 
       } else if (authMode === 'LOGIN') {
         const user = await loginUser(email, password);
@@ -126,6 +129,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete }) => {
           onComplete({ ...user, isGuest: false }, group);
         } else {
           setPhase('GROUP');
+          setIsLoading(false);
         }
 
       } else if (authMode === 'JOIN_CODE') {
@@ -155,7 +159,6 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete }) => {
     } catch (err: any) {
       console.error(err);
       setError(translateError(err.code || err.message || err.toString()));
-    } finally {
       setIsLoading(false);
     }
   };
@@ -216,7 +219,6 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete }) => {
 
     } catch (err: any) {
       setError(err.message || "حدث خطأ أثناء إعداد المجموعة");
-    } finally {
       setIsLoading(false);
     }
   };
@@ -241,7 +243,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete }) => {
           <div className="relative z-10 flex flex-col items-center">
              <h1 className="text-2xl font-bold font-amiri mb-2">مجموعتي</h1>
              <p className="text-emerald-100 opacity-90 text-sm">
-               {phase === 'AUTH' ? 'سجل دخولك أو انضم برمز الدعوة للتواصل مع عائلتك' : 'قم بإنشاء مجموعة أو الانضمام لأخرى'}
+               {phase === 'AUTH' ? 'سجل دخولك أو انضم برمز الدعوة للتواصل مع عائلتك' : 'الخطوة الأخيرة: قم بإنشاء مجموعة أو الانضمام لأخرى'}
              </p>
           </div>
         </div>
@@ -376,6 +378,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete }) => {
           {phase === 'GROUP' && (
             <div className="animate-fade-in">
               <h2 className="text-center font-bold text-xl mb-6">أهلاً بك، {currentUser?.name}</h2>
+              <p className="text-center text-xs text-slate-500 mb-6">لقد تم تسجيل دخولك بنجاح. الآن، قم بإنشاء مساحتك الخاصة أو انضم للعائلة.</p>
               
               <div className="flex gap-3 mb-6">
                 <button

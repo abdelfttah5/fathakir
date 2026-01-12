@@ -19,6 +19,13 @@ import {
   observeAuthState
 } from './services/firebase';
 
+// FIX: Defined outside component to prevent re-mounting on every state change
+const ScrollWrapper = ({ children }: { children: React.ReactNode }) => (
+  <div className="h-full overflow-y-auto no-scrollbar pb-20">
+    {children}
+  </div>
+);
+
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [group, setGroup] = useState<Group | null>(null);
@@ -26,6 +33,7 @@ function App() {
   const [activeTab, setActiveTab] = useState('today');
   const [showInfoModal, setShowInfoModal] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [toastMsg, setToastMsg] = useState<string | null>(null); // Toast State
   
   // Real-time Data State
   const [logs, setLogs] = useState<ActivityLog[]>([]);
@@ -48,7 +56,6 @@ function App() {
   useEffect(() => {
     const unsubscribe = observeAuthState((authState) => {
       if (authState) {
-        // Normalize Auth User to App User Type
         const mappedUser: User = {
             id: authState.uid || authState.id,
             name: authState.displayName || authState.name || 'مستخدم',
@@ -139,8 +146,23 @@ function App() {
     }
   };
 
+  const handleResetData = () => {
+    if(window.confirm("تحذير: سيتم مسح جميع بيانات التطبيق المحلية وإعادته لحالته الأصلية. هل أنت متأكد؟")) {
+      localStorage.clear();
+      window.location.reload();
+    }
+  };
+
+  const showToast = (msg: string) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(null), 3000);
+  };
+
   const addLog = async (type: ActivityType, summary: string, details?: string, category?: any) => {
-    if (!user || !group) return;
+    if (!user || !group) {
+        alert("خطأ: لم يتم التعرف على المستخدم أو المجموعة. حاول إعادة تحميل الصفحة.");
+        return;
+    }
 
     const newLog: ActivityLog = {
       id: `log_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
@@ -152,7 +174,14 @@ function App() {
       category,
       timestamp: Date.now(),
     };
-    await logActivityToFirestore(group.id, newLog);
+    
+    try {
+      await logActivityToFirestore(group.id, newLog);
+      showToast("✅ تم تسجيل النشاط");
+    } catch (e) {
+      console.error("Failed to add log:", e);
+      alert("تعذر حفظ النشاط، يرجى المحاولة مرة أخرى.");
+    }
   };
 
   const updateLocationSettings = (newSettings: Partial<LocationSettings>) => {
@@ -174,13 +203,6 @@ function App() {
   };
 
   const renderScreen = () => {
-    // Wrapper to ensure internal scrolling for non-fixed screens
-    const ScrollWrapper = ({ children }: { children: React.ReactNode }) => (
-      <div className="h-full overflow-y-auto no-scrollbar pb-20">
-        {children}
-      </div>
-    );
-
     switch (activeTab) {
       case 'today': 
         return (
@@ -206,7 +228,7 @@ function App() {
           </ScrollWrapper>
         );
       case 'read': 
-        // QuranScreen manages its own scroll (critical for auto-scroll feature)
+        // QuranScreen manages its own scroll
         return <QuranScreen user={user!} addLog={addLog} isDarkMode={isDarkMode} />;
       case 'group': 
         if (group?.id === 'guest_space') {
@@ -266,7 +288,7 @@ function App() {
   const initial = safeName.length > 0 ? safeName[0] : 'م';
 
   return (
-    // FIXED VIEWPORT HEIGHT (100dvh) - Critical for internal scrolling
+    // FIXED VIEWPORT HEIGHT (100dvh)
     <div className={`h-[100dvh] w-full flex flex-col overflow-hidden transition-colors duration-300 font-sans ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-gradient-to-b from-sky-100 via-sky-50 to-white text-slate-900'}`}>
       
       <div className="shrink-0 z-50">
@@ -278,13 +300,20 @@ function App() {
         />
       </div>
       
-      {/* Main Content Area - Flex Grow to take remaining space */}
+      {/* Main Content Area */}
       <main className="flex-1 w-full max-w-md mx-auto relative overflow-hidden">
         {renderScreen()}
       </main>
 
-      {/* Navigation Bar - Fixed at bottom visually, but structurally outside main */}
+      {/* Navigation Bar */}
       <Navigation activeTab={activeTab} onTabChange={setActiveTab} />
+
+      {/* TOAST NOTIFICATION */}
+      {toastMsg && (
+        <div className="fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-full shadow-lg z-[100] animate-fade-in text-sm font-bold flex items-center gap-2">
+          <span>{toastMsg}</span>
+        </div>
+      )}
 
       {/* INFO MODAL */}
       {showInfoModal && (
@@ -298,13 +327,13 @@ function App() {
                   </svg>
                </div>
                <h2 className="text-3xl font-bold font-amiri mb-2">فَذَكِّر</h2>
-               <p className="text-sm opacity-50 mb-8">إصدار 1.0.4</p>
+               <p className="text-sm opacity-50 mb-8">إصدار 1.0.5</p>
                <div className={`rounded-xl p-4 mb-6 border ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-100'}`}>
                   <p className="font-amiri font-bold text-lg leading-loose mb-2">
                     اللهم اغفر لوالديَّ وارحمهما كما ربَّياني صغيرًا.
                   </p>
                </div>
-               <div className="flex gap-2 justify-center mt-6">
+               <div className="flex flex-col gap-2 justify-center mt-6">
                  {group?.id !== 'guest_space' && (
                    <button 
                      onClick={handleLogout}
@@ -313,6 +342,12 @@ function App() {
                      تسجيل خروج
                    </button>
                  )}
+                 <button 
+                    onClick={handleResetData}
+                    className="px-6 py-3 bg-red-600 text-white rounded-xl font-bold text-xs hover:bg-red-700"
+                 >
+                    حذف البيانات وإعادة ضبط (إصلاح المشاكل)
+                 </button>
                  <button onClick={() => setShowInfoModal(false)} className="px-8 py-3 bg-slate-800 text-white rounded-xl font-bold text-xs shadow-lg">إغلاق</button>
                </div>
             </div>

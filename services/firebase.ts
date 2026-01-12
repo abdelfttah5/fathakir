@@ -1,3 +1,4 @@
+
 import { db, auth, isMockMode } from "../firebaseConfig";
 import { 
   collection, doc, setDoc, getDoc, updateDoc, 
@@ -30,8 +31,23 @@ const mockNotifyAuth = (user: any | null) => {
   mockAuthListeners.forEach(cb => cb(user));
 };
 
-const getLocal = (key: string) => JSON.parse(localStorage.getItem(key) || '[]');
-const setLocal = (key: string, data: any) => localStorage.setItem(key, JSON.stringify(data));
+const getLocal = (key: string) => {
+  try {
+    const item = localStorage.getItem(key);
+    return item ? JSON.parse(item) : [];
+  } catch (e) {
+    console.error(`Error parsing local storage for key ${key}`, e);
+    return [];
+  }
+};
+
+const setLocal = (key: string, data: any) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(data));
+  } catch (e) {
+    console.error(`Error saving to local storage for key ${key}`, e);
+  }
+};
 
 // ==========================================
 // AUTH SERVICES
@@ -42,7 +58,11 @@ export const observeAuthState = (callback: (user: any | null) => void) => {
     // Check session
     const stored = localStorage.getItem(MOCK_STORAGE_KEYS.USER);
     if (stored) {
-      callback(JSON.parse(stored));
+      try {
+        callback(JSON.parse(stored));
+      } catch {
+        callback(null);
+      }
     } else {
       callback(null);
     }
@@ -314,14 +334,13 @@ export const joinGroupInFirestore = async (inviteCode: string, user: User): Prom
 
 export const subscribeToMembers = (groupId: string, callback: (members: User[]) => void) => {
   if (isMockMode) {
-    const interval = setInterval(() => {
+    const fetch = () => {
       const allMembers = getLocal(MOCK_STORAGE_KEYS.MEMBERS_DB);
       const groupMembers = allMembers.filter((m: any) => m.groupId === groupId);
       callback(groupMembers);
-    }, 1000);
-    // Initial call
-    const allMembers = getLocal(MOCK_STORAGE_KEYS.MEMBERS_DB);
-    callback(allMembers.filter((m: any) => m.groupId === groupId));
+    };
+    fetch(); // Immediate call
+    const interval = setInterval(fetch, 2000);
     return () => clearInterval(interval);
   }
 
@@ -336,15 +355,22 @@ export const subscribeToMembers = (groupId: string, callback: (members: User[]) 
 
 export const subscribeToLogs = (groupId: string, callback: (logs: ActivityLog[]) => void) => {
   if (isMockMode) {
-    const interval = setInterval(() => {
-      const allLogs = getLocal(MOCK_STORAGE_KEYS.LOGS_DB);
-      // Sort desc
+    const fetch = () => {
+      let allLogs = getLocal(MOCK_STORAGE_KEYS.LOGS_DB);
+      // Safety Check: If data corrupted, reset it
+      if (!Array.isArray(allLogs)) {
+        allLogs = [];
+        setLocal(MOCK_STORAGE_KEYS.LOGS_DB, []);
+      }
+      
       const groupLogs = allLogs
-        .filter((l: ActivityLog) => l['groupId' as keyof ActivityLog] === groupId)
+        .filter((l: any) => l.groupId === groupId)
         .sort((a: ActivityLog, b: ActivityLog) => b.timestamp - a.timestamp)
         .slice(0, 50);
       callback(groupLogs);
-    }, 1000);
+    };
+    fetch(); // Immediate call
+    const interval = setInterval(fetch, 1000);
     return () => clearInterval(interval);
   }
 
@@ -364,7 +390,10 @@ export const subscribeToLogs = (groupId: string, callback: (logs: ActivityLog[])
 
 export const logActivityToFirestore = async (groupId: string, log: ActivityLog) => {
   if (isMockMode) {
-    const logs = getLocal(MOCK_STORAGE_KEYS.LOGS_DB);
+    let logs = getLocal(MOCK_STORAGE_KEYS.LOGS_DB);
+    if (!Array.isArray(logs)) {
+      logs = []; // Safety reset
+    }
     const logWithGroup = { ...log, groupId };
     logs.push(logWithGroup);
     setLocal(MOCK_STORAGE_KEYS.LOGS_DB, logs);
@@ -393,11 +422,13 @@ export const updateLocationInFirestore = async (groupId: string, point: Location
 
 export const subscribeToLocations = (groupId: string, callback: (points: LocationPoint[]) => void) => {
   if (isMockMode) {
-    const interval = setInterval(() => {
+    const fetch = () => {
       const allLocs = getLocal(MOCK_STORAGE_KEYS.LOCATIONS_DB);
       const groupLocs = allLocs.filter((l: any) => l.groupId === groupId);
       callback(groupLocs);
-    }, 2000);
+    };
+    fetch(); // Immediate call
+    const interval = setInterval(fetch, 2000);
     return () => clearInterval(interval);
   }
 
