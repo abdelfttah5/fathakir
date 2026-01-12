@@ -59,7 +59,13 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
   };
 
   const handleLeave = () => {
-    if (confirm("هل أنت متأكد من مغادرة المجموعة؟ ستتمكن من إنشاء مجموعة جديدة أو الانضمام لمجموعة أخرى.")) {
+    if (confirm("هل أنت متأكد من مغادرة المجموعة؟ ستفقد الوصول إلى النشاط والمواقع.")) {
+       if (onLeaveGroup) onLeaveGroup();
+    }
+  };
+
+  const handleCreateNew = () => {
+    if (confirm("لإنشاء مجموعة جديدة، يجب عليك مغادرة المجموعة الحالية أولاً. هل تريد المتابعة؟")) {
        if (onLeaveGroup) onLeaveGroup();
     }
   };
@@ -208,13 +214,20 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
              </div>
            )}
 
-           {/* Leave Button */}
-           <div className="mt-8">
+           {/* Separate Buttons for Leave and Create */}
+           <div className="mt-8 flex flex-col gap-3">
+              <button 
+                onClick={handleCreateNew}
+                className={`w-full py-3 rounded-xl font-bold border transition-colors text-sm flex items-center justify-center gap-2 ${isDarkMode ? 'bg-emerald-900/40 border-emerald-800 text-emerald-400' : 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'}`}
+              >
+                <span>✨</span> إنشاء مجموعة جديدة
+              </button>
+
               <button 
                 onClick={handleLeave}
                 className="w-full py-3 rounded-xl font-bold text-red-500 border border-red-200 hover:bg-red-50 transition-colors text-sm"
               >
-                مغادرة المجموعة / إنشاء مجموعة جديدة
+                مغادرة المجموعة
               </button>
            </div>
         </div>
