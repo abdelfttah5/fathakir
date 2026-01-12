@@ -368,14 +368,14 @@ function App() {
                   </p>
                </div>
                <div className="flex flex-col gap-2 justify-center mt-6">
-                 {group?.id !== 'guest_space' && (
-                   <button 
-                     onClick={handleLogout}
-                     className="px-6 py-3 bg-red-50 text-red-600 rounded-xl font-bold text-xs border border-red-100"
-                   >
-                     تسجيل خروج
-                   </button>
-                 )}
+                 {/* LOGOUT BUTTON - ENABLED FOR ALL */}
+                 <button 
+                   onClick={handleLogout}
+                   className="px-6 py-3 bg-red-50 text-red-600 rounded-xl font-bold text-xs border border-red-100 hover:bg-red-100"
+                 >
+                   تسجيل خروج
+                 </button>
+
                  <button 
                     onClick={handleResetData}
                     className="px-6 py-3 bg-red-600 text-white rounded-xl font-bold text-xs hover:bg-red-700"
