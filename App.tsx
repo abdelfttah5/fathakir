@@ -178,8 +178,11 @@ function App() {
   };
 
   const addLog = async (type: ActivityType, summary: string, details?: string, category?: any) => {
-    if (!user || !group) {
-        alert("خطأ: لم يتم التعرف على المستخدم أو المجموعة. حاول إعادة تحميل الصفحة.");
+    // FIX: Determine Group ID securely: Use state, or fallback to guest_space if UI is in fallback mode
+    const targetGroupId = group?.id || 'guest_space';
+
+    if (!user) {
+        console.error("User missing during addLog");
         return;
     }
 
@@ -195,7 +198,7 @@ function App() {
     };
     
     try {
-      await logActivityToFirestore(group.id, newLog);
+      await logActivityToFirestore(targetGroupId, newLog);
       showToast("✅ تم تسجيل النشاط");
     } catch (e) {
       console.error("Failed to add log:", e);
