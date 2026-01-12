@@ -14,7 +14,7 @@ export interface User {
   name: string;
   email?: string;
   isAdmin: boolean;
-  isGuest?: boolean; // New flag
+  isGuest?: boolean;
   avatar?: string;
   privacySettings: {
     showDetails: boolean;
@@ -36,20 +36,19 @@ export interface ActivityLog {
   userId: string;
   userName: string;
   type: ActivityType;
-  category?: 'GOOD_DEED' | 'STUDY' | 'WELLBEING'; // New field for Deed categorization
+  category?: 'GOOD_DEED' | 'STUDY' | 'WELLBEING'; 
   summary: string;
   details?: string;
   timestamp: number;
 }
 
-// Location Data Structures
 export interface LocationSettings {
   userId: string;
   mode: 'OFF' | 'SHARE_NOW' | 'AUTO_ON_OPEN';
   visibility: 'ALL' | 'SELECTED';
   selectedUserIds: string[];
   accuracy: 'APPROX' | 'PRECISE';
-  pauseUntil: number | null; // Timestamp
+  pauseUntil: number | null;
 }
 
 export interface LocationPoint {
@@ -91,7 +90,19 @@ export interface ZekrItem {
   zekr: string;
 }
 
-// Fix for missing JSX types in the environment
+// Reciter Types extracted from provided code
+export interface RecitationInfo {
+  loc: string; // format "server:path"
+  tags?: string;
+  qiraah?: string | number;
+}
+
+export interface Reciter {
+  en: string;
+  ar: string;
+  recitations: RecitationInfo[];
+}
+
 declare global {
   namespace JSX {
     interface IntrinsicElements {

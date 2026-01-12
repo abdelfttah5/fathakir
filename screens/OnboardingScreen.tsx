@@ -1,3 +1,4 @@
+
 import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { User, Group } from '../types';
@@ -132,6 +133,8 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete }) => {
         if (!quickName.trim()) throw new Error("الرجاء إدخال الاسم");
         if (!quickCode.trim()) throw new Error("الرجاء إدخال رمز الدعوة");
 
+        const codeClean = quickCode.trim().toUpperCase();
+
         // 1. Create Anon User
         const user = await loginGuestUser();
         
@@ -139,9 +142,12 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete }) => {
         const updatedUser = { ...user, name: quickName };
 
         // 3. Join Group
-        const group = await joinGroupInFirestore(quickCode, updatedUser);
+        const group = await joinGroupInFirestore(codeClean, updatedUser);
         if (group) {
-          onComplete(updatedUser, group);
+          setSuccessMsg("تم الانضمام بنجاح! جاري تحويلك...");
+          setTimeout(() => {
+             onComplete(updatedUser, group);
+          }, 1500);
         } else {
            throw new Error("لم يتم العثور على المجموعة");
         }
@@ -195,13 +201,18 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete }) => {
 
       } else {
         // JOIN
-        if (!inviteToken) throw new Error("أدخل رمز الدعوة");
-        const foundGroup = await joinGroupInFirestore(inviteToken, currentUser);
-        if (!foundGroup) throw new Error("المجموعة غير موجودة أو الرمز خاطئ");
+        if (!inviteToken.trim()) throw new Error("أدخل رمز الدعوة");
+        const codeClean = inviteToken.trim().toUpperCase();
+
+        const foundGroup = await joinGroupInFirestore(codeClean, currentUser);
+        if (!foundGroup) throw new Error("المجموعة غير موجودة أو الرمز خاطئ. تأكد من الرمز.");
         targetGroup = foundGroup;
       }
 
-      onComplete(currentUser, targetGroup);
+      setSuccessMsg(groupMode === 'CREATE' ? "تم إنشاء المجموعة بنجاح!" : "تم الانضمام بنجاح!");
+      setTimeout(() => {
+         onComplete(currentUser, targetGroup);
+      }, 1500);
 
     } catch (err: any) {
       setError(err.message || "حدث خطأ أثناء إعداد المجموعة");
@@ -339,11 +350,12 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete }) => {
                 )}
 
                 {error && <div className="text-red-500 text-xs bg-red-50 p-3 rounded-lg text-center font-bold" style={{direction: 'ltr'}}>{error}</div>}
-                {successMsg && <div className="text-emerald-600 text-xs bg-emerald-50 p-3 rounded-lg">{successMsg}</div>}
+                {successMsg && <div className="text-emerald-600 text-xs bg-emerald-50 p-3 rounded-lg text-center font-bold">{successMsg}</div>}
 
                 <button 
                   type="submit" 
-                  className="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-emerald-200 active:scale-95 transition-all"
+                  disabled={!!successMsg}
+                  className="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-emerald-200 active:scale-95 transition-all disabled:opacity-50"
                 >
                   {authMode === 'LOGIN' ? 'دخول' : authMode === 'REGISTER' ? 'إنشاء الحساب' : 'انضمام للمجموعة'}
                 </button>
@@ -405,11 +417,13 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete }) => {
                   </div>
                 )}
 
-                {error && <div className="text-red-500 text-xs bg-red-50 p-3 rounded-lg">{error}</div>}
+                {error && <div className="text-red-500 text-xs bg-red-50 p-3 rounded-lg text-center font-bold">{error}</div>}
+                {successMsg && <div className="text-emerald-600 text-xs bg-emerald-50 p-3 rounded-lg text-center font-bold">{successMsg}</div>}
 
                 <button 
                   type="submit" 
-                  className="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-emerald-200 active:scale-95 transition-all mt-4"
+                  disabled={!!successMsg}
+                  className="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-emerald-200 active:scale-95 transition-all mt-4 disabled:opacity-50"
                 >
                   {groupMode === 'CREATE' ? 'إنشاء وبدء' : 'انضمام'}
                 </button>
