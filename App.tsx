@@ -17,7 +17,7 @@ import {
   updateLocationInFirestore,
   logoutUser,
   observeAuthState,
-  leaveGroupInFirestore // New Import
+  leaveGroupInFirestore
 } from './services/firebase';
 
 // FIX: Defined outside component to prevent re-mounting on every state change
@@ -161,9 +161,6 @@ function App() {
        // Reset Group State
        setGroup({ id: 'guest_space', name: 'مساحتي الخاصة', timezone: 'Asia/Muscat' });
        setActiveTab('group');
-       
-       // Optional: Reload to ensure clean slate from Onboarding
-       // window.location.reload(); 
     }
   };
 
@@ -224,13 +221,22 @@ function App() {
   };
 
   const renderScreen = () => {
+    // Safety check for group if needed in other tabs, though mainly for 'group'
+    if (!group && activeTab === 'group') {
+       return (
+         <div className="h-full flex items-center justify-center">
+            <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+         </div>
+       );
+    }
+
     switch (activeTab) {
       case 'today': 
         return (
           <ScrollWrapper>
             <TodayScreen 
               user={user!} 
-              group={group!} 
+              group={group || { id: 'guest_space', name: 'تحميل...', timezone: 'Asia/Muscat' }} // Fallback to avoid crash
               logs={logs} 
               addLog={addLog}
               members={members}
@@ -249,7 +255,6 @@ function App() {
           </ScrollWrapper>
         );
       case 'read': 
-        // QuranScreen manages its own scroll
         return <QuranScreen user={user!} addLog={addLog} isDarkMode={isDarkMode} />;
       case 'group': 
         if (group?.id === 'guest_space') {
