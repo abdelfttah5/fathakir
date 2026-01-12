@@ -37,6 +37,8 @@ const getLocal = (key: string) => {
     return item ? JSON.parse(item) : [];
   } catch (e) {
     console.error(`Error parsing local storage for key ${key}`, e);
+    // If corruption detected, reset it to empty array to allow new writes
+    localStorage.setItem(key, JSON.stringify([]));
     return [];
   }
 };
@@ -299,9 +301,15 @@ export const joinGroupInFirestore = async (inviteCode: string, user: User): Prom
     if (!group) throw new Error("رمز الدعوة غير صحيح");
 
     const members = getLocal(MOCK_STORAGE_KEYS.MEMBERS_DB);
-    const memberData = { ...user, userId: user.id, groupId: group.id, joinedAt: Date.now() };
-    members.push(memberData);
-    setLocal(MOCK_STORAGE_KEYS.MEMBERS_DB, members);
+    
+    // Check if already a member to prevent duplicates
+    const existingMember = members.find((m: any) => m.userId === user.id && m.groupId === group.id);
+    if (!existingMember) {
+        const memberData = { ...user, userId: user.id, groupId: group.id, joinedAt: Date.now() };
+        members.push(memberData);
+        setLocal(MOCK_STORAGE_KEYS.MEMBERS_DB, members);
+    }
+    
     return group;
   }
 

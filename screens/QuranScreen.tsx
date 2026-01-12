@@ -1,5 +1,4 @@
 
-
 import * as React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import { User, ActivityType, Reciter as LegacyReciter } from '../types';
@@ -174,6 +173,15 @@ const QuranScreen: React.FC<QuranScreenProps> = ({ user, addLog, isDarkMode = fa
     }
   }
 
+  // --- LOGGING ---
+  const handleRecordReading = () => {
+    const summary = viewMode === 'SCROLL' 
+        ? `قرأ سورة ${currentChapterName}` 
+        : `قرأ صفحة ${currentPage} من المصحف`;
+    
+    addLog(ActivityType.QURAN, summary);
+  };
+
   // --- TAFSIR ---
   async function openTafsir(v: Verse) {
     if (!tafsirId) return;
@@ -317,22 +325,18 @@ const QuranScreen: React.FC<QuranScreenProps> = ({ user, addLog, isDarkMode = fa
                               >
                                 {autoPlay ? "⏸ إيقاف" : "▶ تلقائي"}
                             </button>
-                            
-                            <div className={`flex items-center gap-1 px-2 py-1 rounded-lg border ${isDarkMode ? 'bg-[#333] border-[#444]' : 'bg-slate-50 border-slate-200'}`}>
-                               <span className="text-[8px] opacity-70">بطيء</span>
-                               <input 
-                                  type="range" 
-                                  min="0.2" 
-                                  max="3" 
-                                  step="0.1" 
-                                  value={scrollSpeed}
-                                  onChange={(e) => setScrollSpeed(parseFloat(e.target.value))}
-                                  className="w-16 h-1 bg-gray-300 rounded-lg appearance-none cursor-pointer accent-emerald-500"
-                               />
-                               <span className="text-[8px] opacity-70">سريع</span>
-                            </div>
                          </div>
                       )}
+                      
+                      {/* --- RECORD BUTTON --- */}
+                      <button 
+                         onClick={handleRecordReading}
+                         className={`text-xs font-bold px-3 py-1.5 rounded-lg border flex items-center gap-1 active:scale-95 transition-all ${isDarkMode ? 'bg-emerald-900/40 text-emerald-300 border-emerald-700' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}
+                      >
+                         <span>✅</span>
+                         <span>سجل الورد</span>
+                      </button>
+
                    </div>
                    
                    <div className="flex items-center gap-2">
@@ -421,14 +425,22 @@ const QuranScreen: React.FC<QuranScreenProps> = ({ user, addLog, isDarkMode = fa
                             
                             <div className="text-center py-10 opacity-70">
                                 <p className={`text-sm mb-4 ${theme.text}`}>-- نهاية السورة --</p>
-                                {currentSurahId < 114 && (
-                                  <button 
-                                    onClick={() => setCurrentSurahId(s => s + 1)}
-                                    className={`px-6 py-3 rounded-xl font-bold ${isDarkMode ? 'bg-emerald-800 text-white' : 'bg-emerald-100 text-emerald-800'}`}
-                                  >
-                                    الانتقال للسورة التالية &larr;
-                                  </button>
-                                )}
+                                <div className="flex flex-col gap-3 justify-center items-center">
+                                    <button 
+                                        onClick={handleRecordReading}
+                                        className={`px-6 py-3 rounded-xl font-bold flex items-center gap-2 ${isDarkMode ? 'bg-emerald-900/50 text-emerald-300 border border-emerald-700' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}
+                                    >
+                                        <span>✅</span> سجل أنك أتممت القراءة
+                                    </button>
+                                    {currentSurahId < 114 && (
+                                    <button 
+                                        onClick={() => setCurrentSurahId(s => s + 1)}
+                                        className={`px-6 py-3 rounded-xl font-bold ${isDarkMode ? 'bg-emerald-800 text-white' : 'bg-emerald-100 text-emerald-800'}`}
+                                    >
+                                        الانتقال للسورة التالية &larr;
+                                    </button>
+                                    )}
+                                </div>
                             </div>
                          </div>
                      )}
