@@ -20,11 +20,23 @@ interface GroupScreenProps {
 const GroupScreen: React.FC<GroupScreenProps> = ({ 
   user, group, members, logs, locationPoints, googleAccessToken, setGoogleAccessToken, onLeaveGroup, isDarkMode = false
 }) => {
+  // SAFETY CHECK: If critical data is missing, render a fallback instead of crashing
+  if (!user || !group) {
+    return (
+      <div className="p-8 text-center opacity-50">
+        <div className="w-8 h-8 border-4 border-current border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+        جاري تحميل بيانات المجموعة...
+      </div>
+    );
+  }
+
   const [subTab, setSubTab] = useState<'activity' | 'members' | 'locations' | 'meet'>('activity');
   const [inviteCode, setInviteCode] = useState<string | null>(group.inviteCode || null);
   const [isScheduling, setIsScheduling] = useState(false);
 
-  const isAdmin = user.isAdmin || user.id === group.adminId;
+  const isAdmin = user.isAdmin || (group.id && user.id === group.adminId);
+  const safeGroupId = group.id ? group.id.toString() : 'unknown';
+  const displayId = safeGroupId.length > 8 ? safeGroupId.substring(0, 8) : safeGroupId;
 
   // --- LOGIC ---
   const handleGenerateInvite = async () => {
@@ -33,14 +45,15 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
     
     // Save to State and DB
     setInviteCode(newCode);
-    await updateGroupCode(group.id, newCode);
+    if (group.id) {
+        await updateGroupCode(group.id, newCode);
+    }
     
     alert(`تم إنشاء وحفظ رمز الدعوة: ${newCode}`);
   };
 
   const handleCopyLink = () => {
     if (!inviteCode) return;
-    // Just a placeholder link format for now as requested in V1
     const dummyLink = `انضم لمجموعتي في تطبيق فذكر باستخدام الرمز: ${inviteCode}`;
     navigator.clipboard.writeText(dummyLink);
     alert('تم نسخ نص الدعوة: ' + dummyLink);
@@ -50,7 +63,7 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
     setIsScheduling(true);
     const startTime = new Date().toISOString();
     
-    const link = await createGoogleMeetEvent(`مكالمة مجموعة ${group.name}`, startTime, 60, "simulated-token");
+    const link = await createGoogleMeetEvent(`مكالمة مجموعة ${group.name || 'العائلة'}`, startTime, 60, "simulated-token");
 
     if (link) {
         if (type === 'NOW') {
@@ -94,11 +107,14 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
     emptyState: isDarkMode ? 'bg-[#2a2a2a] border-slate-700 text-gray-500' : 'bg-white border-slate-200 text-slate-400'
   };
 
+  const safeMembers = Array.isArray(members) ? members : [];
+  const safeLogs = Array.isArray(logs) ? logs : [];
+
   return (
     <div className="p-4">
       <div className="flex items-center justify-between mb-6">
-        <h2 className={`text-xl font-bold ${theme.text}`}>{group.name}</h2>
-        <span className={`text-xs px-2 py-1 rounded ${isDarkMode ? 'bg-[#333] text-gray-400' : 'bg-slate-100 text-slate-500'}`}>{group.id.substring(0,8)}...</span>
+        <h2 className={`text-xl font-bold ${theme.text}`}>{group.name || 'مجموعة'}</h2>
+        <span className={`text-xs px-2 py-1 rounded ${isDarkMode ? 'bg-[#333] text-gray-400' : 'bg-slate-100 text-slate-500'}`}>{displayId}...</span>
       </div>
 
       {/* Tabs */}
@@ -112,15 +128,15 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
       {/* ACTIVITY */}
       {subTab === 'activity' && (
         <div className="space-y-4">
-          {logs.length === 0 ? (
+          {safeLogs.length === 0 ? (
             <div className={`text-center py-8 rounded-xl border border-dashed ${theme.emptyState}`}>
                لا يوجد نشاط اليوم بعد.
             </div>
           ) : (
-            logs.map((log) => (
-               <div key={log.id} className={`p-4 rounded-xl border shadow-sm animate-fade-in ${theme.card}`}>
+            safeLogs.map((log) => (
+               <div key={log.id || Math.random()} className={`p-4 rounded-xl border shadow-sm animate-fade-in ${theme.card}`}>
                   <div className="flex justify-between">
-                     <h4 className={`font-bold text-sm ${theme.text}`}>{log.userName}</h4>
+                     <h4 className={`font-bold text-sm ${theme.text}`}>{log.userName || 'عضو'}</h4>
                      <span className={`text-xs ${theme.subText}`}>{formatTimeAgo(log.timestamp)}</span>
                   </div>
                   <p className={`text-sm mt-1 ${isDarkMode ? 'text-gray-300' : 'text-slate-600'}`}>{log.summary}</p>
@@ -142,18 +158,18 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
             ℹ️ تعرض هنا المواقع الأخيرة للأعضاء الذين سمحوا بمشاركة موقعهم معك.
           </div>
           
-          {members.filter(m => m.id !== user.id).length === 0 && (
+          {safeMembers.filter(m => m.id !== user.id).length === 0 && (
              <p className={`text-center py-4 ${theme.subText}`}>لا يوجد أعضاء آخرون.</p>
           )}
 
-          {members.map(m => {
+          {safeMembers.map(m => {
              const loc = locationPoints.find(p => p.userId === m.id);
              if (!loc && m.id !== user.id) return null; 
              
              return (
-               <div key={m.id} className={`p-4 rounded-xl border flex items-center justify-between ${theme.card}`}>
+               <div key={m.id || Math.random()} className={`p-4 rounded-xl border flex items-center justify-between ${theme.card}`}>
                   <div className="flex items-center gap-3">
-                     <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${isDarkMode ? 'bg-[#333] text-gray-300' : 'bg-slate-100 text-slate-600'}`}>{m.name[0]}</div>
+                     <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${isDarkMode ? 'bg-[#333] text-gray-300' : 'bg-slate-100 text-slate-600'}`}>{m.name ? m.name[0] : '?'}</div>
                      <div>
                        <p className={`font-bold ${theme.text}`}>{m.name} {m.id === user.id ? '(أنت)' : ''}</p>
                        {loc ? (
@@ -184,7 +200,7 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
       {/* MEMBERS */}
       {subTab === 'members' && (
         <div className="space-y-4">
-           {members.length <= 1 && (
+           {safeMembers.length <= 1 && (
              <div className={`p-6 border rounded-xl text-center ${isDarkMode ? 'bg-[#2a2a2a] border-[#333]' : 'bg-slate-50 border-slate-100'}`}>
                <div className="text-4xl mb-3">👋</div>
                <p className={`font-bold mb-2 ${theme.text}`}>المجموعة هادئة!</p>
@@ -192,11 +208,11 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
              </div>
            )}
            <div className="space-y-2">
-             {members.map(m => (
-               <div key={m.id} className={`flex items-center gap-3 p-3 rounded-xl border ${theme.card}`}>
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${isDarkMode ? 'bg-emerald-900/50 text-emerald-400' : 'bg-emerald-100 text-emerald-700'}`}>{m.name[0]}</div>
+             {safeMembers.map(m => (
+               <div key={m.id || Math.random()} className={`flex items-center gap-3 p-3 rounded-xl border ${theme.card}`}>
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${isDarkMode ? 'bg-emerald-900/50 text-emerald-400' : 'bg-emerald-100 text-emerald-700'}`}>{m.name ? m.name[0] : '?'}</div>
                   <span className={`font-bold ${theme.text}`}>{m.name} {m.id === user.id ? '(أنت)' : ''}</span>
-                  {(m.isAdmin || m.id === group.adminId) && <span className={`mr-auto text-[10px] px-2 py-1 rounded ${isDarkMode ? 'bg-[#333] text-gray-400' : 'bg-slate-100 text-slate-500'}`}>مشرف</span>}
+                  {(m.isAdmin || (group.id && m.id === group.adminId)) && <span className={`mr-auto text-[10px] px-2 py-1 rounded ${isDarkMode ? 'bg-[#333] text-gray-400' : 'bg-slate-100 text-slate-500'}`}>مشرف</span>}
                </div>
              ))}
            </div>

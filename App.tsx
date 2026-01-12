@@ -76,7 +76,8 @@ function App() {
         if (membership) {
            const storedGroups = JSON.parse(localStorage.getItem('f_groups') || '[]');
            const foundGroup = storedGroups.find((g: any) => g.id === membership.groupId);
-           if (foundGroup) {
+           // Validate foundGroup structure roughly
+           if (foundGroup && foundGroup.id) {
              setGroup(foundGroup);
            } else {
              setGroup({ id: 'guest_space', name: 'مساحتي الخاصة', timezone: 'Asia/Muscat' });
@@ -113,15 +114,15 @@ function App() {
   useEffect(() => {
     if (!group?.id) return;
     
-    const unsubMembers = subscribeToMembers(group.id, (fetchedMembers) => setMembers(fetchedMembers));
+    const unsubMembers = subscribeToMembers(group.id, (fetchedMembers) => setMembers(fetchedMembers || []));
     const unsubLogs = subscribeToLogs(group.id, (fetchedLogs) => {
         if (group.id === 'guest_space' && user) {
-            setLogs(fetchedLogs.filter(l => l.userId === user.id));
+            setLogs((fetchedLogs || []).filter(l => l.userId === user.id));
         } else {
-            setLogs(fetchedLogs);
+            setLogs(fetchedLogs || []);
         }
     });
-    const unsubLocs = subscribeToLocations(group.id, (fetchedPoints) => setLocationPoints(fetchedPoints));
+    const unsubLocs = subscribeToLocations(group.id, (fetchedPoints) => setLocationPoints(fetchedPoints || []));
 
     return () => {
       unsubMembers();
@@ -221,8 +222,8 @@ function App() {
   };
 
   const renderScreen = () => {
-    // Safety check for group if needed in other tabs, though mainly for 'group'
-    if (!group && activeTab === 'group') {
+    // 1. Safety check for loading state
+    if (!user || (!group && activeTab === 'group')) {
        return (
          <div className="h-full flex items-center justify-center">
             <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
@@ -230,13 +231,16 @@ function App() {
        );
     }
 
+    // 2. Fallback group if missing (prevent crash in other tabs)
+    const safeGroup = group || { id: 'guest_space', name: 'تحميل...', timezone: 'Asia/Muscat' };
+
     switch (activeTab) {
       case 'today': 
         return (
           <ScrollWrapper>
             <TodayScreen 
-              user={user!} 
-              group={group || { id: 'guest_space', name: 'تحميل...', timezone: 'Asia/Muscat' }} // Fallback to avoid crash
+              user={user} 
+              group={safeGroup}
               logs={logs} 
               addLog={addLog}
               members={members}
@@ -251,13 +255,13 @@ function App() {
       case 'dhikr': 
         return (
           <ScrollWrapper>
-            <DhikrScreen user={user!} addLog={addLog} isDarkMode={isDarkMode} />
+            <DhikrScreen user={user} addLog={addLog} isDarkMode={isDarkMode} />
           </ScrollWrapper>
         );
       case 'read': 
-        return <QuranScreen user={user!} addLog={addLog} isDarkMode={isDarkMode} />;
+        return <QuranScreen user={user} addLog={addLog} isDarkMode={isDarkMode} />;
       case 'group': 
-        if (group?.id === 'guest_space') {
+        if (safeGroup.id === 'guest_space') {
            return (
             <ScrollWrapper>
                <OnboardingScreen onComplete={handleLogin} />
@@ -267,8 +271,8 @@ function App() {
         return (
           <ScrollWrapper>
             <GroupScreen 
-              user={user!} 
-              group={group!} 
+              user={user} 
+              group={safeGroup} 
               members={members} 
               logs={logs} 
               locationPoints={locationPoints}
@@ -283,8 +287,8 @@ function App() {
         return (
           <ScrollWrapper>
             <TodayScreen 
-              user={user!} 
-              group={group!} 
+              user={user} 
+              group={safeGroup} 
               logs={logs} 
               addLog={addLog}
               members={members}
