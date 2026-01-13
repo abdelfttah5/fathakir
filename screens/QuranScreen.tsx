@@ -325,6 +325,15 @@ const QuranScreen: React.FC<QuranScreenProps> = ({ user, addLog, isDarkMode = fa
                               >
                                 {autoPlay ? "⏸ إيقاف" : "▶ تلقائي"}
                             </button>
+
+                            {/* SPEED CONTROL */}
+                            <button
+                                onClick={() => setScrollSpeed(prev => prev >= 3 ? 0.5 : prev + 0.5)}
+                                className={`text-xs font-bold px-2 py-1.5 w-10 rounded-lg border transition-all ${isDarkMode ? 'bg-[#333] border-[#444] text-white hover:bg-[#444]' : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'}`}
+                                title="سرعة التمرير"
+                            >
+                                {scrollSpeed}x
+                            </button>
                          </div>
                       )}
                       
@@ -334,7 +343,7 @@ const QuranScreen: React.FC<QuranScreenProps> = ({ user, addLog, isDarkMode = fa
                          className={`text-xs font-bold px-3 py-1.5 rounded-lg border flex items-center gap-1 active:scale-95 transition-all ${isDarkMode ? 'bg-emerald-900/40 text-emerald-300 border-emerald-700' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}
                       >
                          <span>✅</span>
-                         <span>سجل الورد</span>
+                         <span className="hidden sm:inline">سجل</span>
                       </button>
 
                    </div>

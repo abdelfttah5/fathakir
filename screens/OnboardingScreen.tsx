@@ -10,7 +10,8 @@ import {
   loginGuestUser,
   getUserGroup,
   resetPassword,
-  observeAuthState
+  observeAuthState,
+  logoutUser
 } from '../services/firebase';
 import { updateProfile } from "firebase/auth";
 
@@ -223,6 +224,16 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete }) => {
     }
   };
 
+  const handleLogout = async () => {
+    if (window.confirm("هل أنت متأكد من تسجيل الخروج؟")) {
+       await logoutUser();
+       setCurrentUser(null);
+       setPhase('AUTH');
+       setAuthMode('LOGIN');
+       setError('');
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="h-full flex items-center justify-center p-8 text-center text-slate-500">
@@ -431,6 +442,18 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete }) => {
                   {groupMode === 'CREATE' ? 'إنشاء وبدء' : 'انضمام'}
                 </button>
               </form>
+
+              {/* LOGOUT BUTTON FOR EMAIL USERS ONLY */}
+              {!currentUser?.isGuest && (
+                 <div className="mt-8 pt-4 border-t border-slate-100 text-center">
+                    <button 
+                      onClick={handleLogout}
+                      className="text-xs text-red-500 font-bold hover:bg-red-50 px-4 py-2 rounded-lg transition-colors"
+                    >
+                      تسجيل خروج (ليس أنت؟)
+                    </button>
+                 </div>
+              )}
             </div>
           )}
         </div>
