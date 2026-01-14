@@ -327,7 +327,7 @@ const TodayScreen: React.FC<TodayScreenProps> = ({
       {/* --- REPORT MODAL --- */}
       {showReportModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-fade-in" onClick={() => setShowReportModal(false)}>
-          <div className={`w-full max-w-sm rounded-3xl p-6 shadow-2xl overflow-hidden relative flex flex-col max-h-[85vh] ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-white text-slate-800'}`} onClick={e => e.stopPropagation()}>
+          <div className={`w-full max-w-sm rounded-3xl p-6 shadow-2xl overflow-hidden relative flex flex-col h-[75vh] ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-white text-slate-800'}`} onClick={e => e.stopPropagation()}>
             <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-emerald-400 to-blue-500"></div>
             <h3 className="text-xl font-bold text-center mb-4 mt-2 shrink-0">📊 حصاد اليوم</h3>
             
@@ -370,7 +370,7 @@ const TodayScreen: React.FC<TodayScreenProps> = ({
                 </div>
 
                 {/* FULL LOGS (The requested feature) */}
-                <div className={`rounded-xl p-4 border ${isDarkMode ? 'bg-slate-700/50 border-slate-600' : 'bg-slate-50 border-slate-100'}`}>
+                <div className={`rounded-xl p-4 border min-h-[200px] ${isDarkMode ? 'bg-slate-700/50 border-slate-600' : 'bg-slate-50 border-slate-100'}`}>
                    <h4 className="text-sm font-bold mb-3 border-b pb-2 opacity-80 border-slate-200/20">سجل النشاط الكامل</h4>
                    <div className="space-y-2">
                      {todayLogs.length === 0 ? (

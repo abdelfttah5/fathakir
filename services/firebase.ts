@@ -314,16 +314,36 @@ export const joinGroupInFirestore = async (inviteCode: string, user: User): Prom
   }
 
   try {
+    // 1. Find Group
     const q = query(collection(db, "groups"), where("inviteCode", "==", inviteCode.trim()));
     const querySnapshot = await getDocs(q);
-    if (querySnapshot.empty) throw new Error("رمز الدعوة غير صحيح");
+    
+    if (querySnapshot.empty) {
+      throw new Error("رمز الدعوة غير صحيح أو المجموعة غير موجودة");
+    }
+    
     const groupData = querySnapshot.docs[0].data() as Group;
-    const memberData = { ...user, userId: user.id, groupId: groupData.id, joinedAt: Date.now() };
-    await setDoc(doc(db, "group_members", `${groupData.id}_${user.id}`), cleanUndefined(memberData));
+    
+    // 2. Add Member (Ensure we use the authenticated ID)
+    const currentAuthId = auth.currentUser?.uid || user.id;
+    
+    const memberData = { 
+      id: currentAuthId,
+      name: user.name, 
+      email: user.email || '',
+      isAdmin: false,
+      isGuest: user.isGuest || false,
+      userId: currentAuthId, // CRITICAL: Must match auth.uid for rules
+      groupId: groupData.id, 
+      joinedAt: Date.now() 
+    };
+
+    await setDoc(doc(db, "group_members", `${groupData.id}_${currentAuthId}`), cleanUndefined(memberData));
+    
     return groupData;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error joining group in Firestore:", error);
-    throw error;
+    throw new Error("تعذر الانضمام للمجموعة. تأكد من صحة الرمز أو اتصال الإنترنت.");
   }
 };
 
@@ -388,7 +408,7 @@ export const subscribeToLogs = (groupId: string, callback: (logs: ActivityLog[])
       const groupLogs = allLogs
         .filter((l: any) => l.groupId === groupId)
         .sort((a: ActivityLog, b: ActivityLog) => b.timestamp - a.timestamp)
-        .slice(0, 50);
+        .slice(0, 300); // Increased local limit too
       
       callback(groupLogs);
   };
@@ -404,16 +424,17 @@ export const subscribeToLogs = (groupId: string, callback: (logs: ActivityLog[])
       collection(db, "activity_logs"), 
       where("groupId", "==", groupId), 
       orderBy("timestamp", "desc"), 
-      limit(50)
+      limit(300) // INCREASED LIMIT FROM 50 TO 300
     );
     return onSnapshot(q, (snapshot) => {
       const logs: ActivityLog[] = [];
       snapshot.forEach((doc) => logs.push(doc.data() as ActivityLog));
       callback(logs);
     }, (error) => {
-      console.warn("Firestore logs failed, switching to persistent local mode", error);
+      // REMOVED: Aggressive setInterval fallback which caused flickering ("coming and going")
+      console.warn("Firestore logs subscription error:", error);
+      // Try local once, but don't loop it to avoid race conditions
       fetchLocal();
-      const interval = setInterval(fetchLocal, 2000);
     });
   } catch (e) {
     fetchLocal();
