@@ -33,6 +33,7 @@ function App() {
 
   const [activeTab, setActiveTab] = useState('today');
   const [showInfoModal, setShowInfoModal] = useState(false);
+  const [showStartupDua, setShowStartupDua] = useState(true); // New state for startup Dua
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null); // Toast State
   
@@ -325,6 +326,28 @@ function App() {
     // FIXED VIEWPORT HEIGHT (100dvh)
     <div className={`h-[100dvh] w-full flex flex-col overflow-hidden transition-colors duration-300 font-sans ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-gradient-to-b from-sky-100 via-sky-50 to-white text-slate-900'}`}>
       
+      {/* STARTUP DUA MODAL */}
+      {showStartupDua && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md p-6 animate-fade-in" style={{zIndex: 9999}}>
+          <div className={`w-full max-w-sm rounded-3xl p-8 shadow-2xl text-center relative overflow-hidden ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-white text-slate-800'}`}>
+             <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-emerald-400 via-teal-500 to-emerald-600"></div>
+             
+             <div className="text-4xl mb-6 opacity-80">🤲</div>
+             
+             <p className="text-xl md:text-2xl font-bold font-amiri leading-loose mb-8 text-emerald-800 dark:text-emerald-400">
+               اللَّهُمَّ اغْفِرْ لِوَالِدَيَّ وَارْحَمْهُمَا، كَمَا رَبَّيَانِي صَغِيرًا، وَاغْفِرْ لِأَمْوَاتِنَا وَأَمْوَاتِ الْمُسْلِمِينَ
+             </p>
+
+             <button 
+               onClick={() => setShowStartupDua(false)}
+               className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-lg shadow-lg shadow-emerald-200/50 transition-all active:scale-95"
+             >
+               آمين
+             </button>
+          </div>
+        </div>
+      )}
+
       <div className="shrink-0 z-50">
         <Header 
           userInitials={initial} 

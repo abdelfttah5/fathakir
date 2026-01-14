@@ -92,3 +92,11 @@ export interface TafsirResponse {
     text: string;
   };
 }
+
+export interface VerseTiming {
+  verse_key: string;
+  timestamp_from: number;
+  timestamp_to: number;
+  duration: number;
+  segments: [number, number, number][];
+}

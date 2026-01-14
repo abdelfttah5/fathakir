@@ -1,4 +1,5 @@
 
+
 import { 
   ChaptersResponse, Chapter, 
   RecitationsResponse, Recitation,
@@ -38,6 +39,15 @@ export function displayArabicName(
   if (tn && (tn.language_name || "").toLowerCase().includes("arab")) return tn.name;
   return x.name || x.reciter_name || "بدون اسم";
 }
+
+// List of reciters verified to have reliable verse timings (segments) for sync mode
+export const VERIFIED_SYNC_NAMES = [
+  "Mishary Rashid Alafasy",
+  "Mahmoud Khalil Al-Husary",
+  "AbdulBaset AbdulSamad",
+  "Mohamed Siddiq Al-Minshawi",
+  "Saad Al-Ghamdi"
+];
 
 export const getChapters = async (): Promise<Chapter[]> => {
   const url = `${BASE_URL}/chapters?language=ar`;
@@ -96,4 +106,10 @@ export const getAudioUrlForVerse = async (recitationId: number, verseKey: string
 
 export const getReciterPreviewUrl = async (recitationId: number): Promise<string> => {
   return getAudioUrlForVerse(recitationId, "1:1");
+};
+
+export const getChapterAudio = async (recitationId: number, chapterId: number) => {
+  const url = `${BASE_URL}/chapter_recitations/${recitationId}/${chapterId}`;
+  const data = await getJson<{ audio_file: any }>(url);
+  return data.audio_file;
 };

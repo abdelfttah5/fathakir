@@ -140,18 +140,15 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete }) => {
 
         const codeClean = quickCode.trim().toUpperCase();
 
-        // 1. Create Anon User
-        const user = await loginGuestUser();
+        // 1. Create Anon User (Pass name to ensure it's saved)
+        const user = await loginGuestUser(quickName);
         
-        // 2. Update Name manually since Guest Login might not set it immediately in Auth object
-        const updatedUser = { ...user, name: quickName };
-
-        // 3. Join Group
-        const group = await joinGroupInFirestore(codeClean, updatedUser);
+        // 2. Join Group
+        const group = await joinGroupInFirestore(codeClean, user);
         if (group) {
           setSuccessMsg("تم الانضمام بنجاح! جاري تحويلك...");
           setTimeout(() => {
-             onComplete(updatedUser, group);
+             onComplete(user, group);
           }, 1500);
         } else {
            throw new Error("لم يتم العثور على المجموعة");

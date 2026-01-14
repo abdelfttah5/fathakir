@@ -142,10 +142,10 @@ export const loginUser = async (email: string, pass: string): Promise<User> => {
   }
 };
 
-export const loginGuestUser = async (): Promise<User> => {
+export const loginGuestUser = async (customName?: string): Promise<User> => {
   if (isMockMode) {
     const id = 'guest_' + Date.now();
-    const name = `زائر ${id.substring(6, 10)}`;
+    const name = customName || `زائر ${id.substring(6, 10)}`;
     const newUser: User = {
       id, name, email: '', isAdmin: false,
       privacySettings: { showDetails: false, shareLocation: false }
@@ -164,25 +164,22 @@ export const loginGuestUser = async (): Promise<User> => {
     const userCredential = await signInAnonymously(auth);
     const fbUser = userCredential.user;
     if (fbUser) {
-      const guestName = `زائر ${fbUser.uid.substring(0, 4)}`;
+      const guestName = customName || `زائر ${fbUser.uid.substring(0, 4)}`;
       try { await updateProfile(fbUser, { displayName: guestName }); } catch(e) {}
       const newUser: User = {
         id: fbUser.uid, name: guestName, email: '', isAdmin: false,
         privacySettings: { showDetails: false, shareLocation: false }
       };
       const userDoc = await getDoc(doc(db, "users", fbUser.uid));
-      if (!userDoc.exists()) {
-        await setDoc(doc(db, "users", fbUser.uid), newUser);
-        return newUser;
-      } else {
-        return userDoc.data() as User;
-      }
+      // Always update/set doc to ensure name is current
+      await setDoc(doc(db, "users", fbUser.uid), newUser, { merge: true });
+      return newUser;
     }
     throw new Error("Guest login failed");
   } catch (error) {
     console.error("Firebase Guest Login Error", error);
     const id = 'guest_' + Date.now();
-    const name = `زائر (غير متصل)`;
+    const name = customName || `زائر (غير متصل)`;
     const newUser: User = {
       id, name, email: '', isAdmin: false, isGuest: true,
       privacySettings: { showDetails: false, shareLocation: false }

@@ -327,46 +327,72 @@ const TodayScreen: React.FC<TodayScreenProps> = ({
       {/* --- REPORT MODAL --- */}
       {showReportModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-fade-in" onClick={() => setShowReportModal(false)}>
-          <div className={`w-full max-w-sm rounded-3xl p-6 shadow-2xl overflow-hidden relative ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-white text-slate-800'}`} onClick={e => e.stopPropagation()}>
+          <div className={`w-full max-w-sm rounded-3xl p-6 shadow-2xl overflow-hidden relative flex flex-col max-h-[85vh] ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-white text-slate-800'}`} onClick={e => e.stopPropagation()}>
             <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-emerald-400 to-blue-500"></div>
-            <h3 className="text-xl font-bold text-center mb-6 mt-2">📊 حصاد اليوم</h3>
+            <h3 className="text-xl font-bold text-center mb-4 mt-2 shrink-0">📊 حصاد اليوم</h3>
             
-            <div className="grid grid-cols-3 gap-2 mb-6 text-center">
-              <div className={`p-3 rounded-2xl ${isDarkMode ? 'bg-emerald-900/30' : 'bg-emerald-50'}`}>
-                 <div className="text-2xl mb-1">📿</div>
-                 <div className="text-lg font-bold text-emerald-600">{dhikrCount}</div>
-                 <div className="text-[10px] opacity-70">أذكار</div>
-              </div>
-              <div className={`p-3 rounded-2xl ${isDarkMode ? 'bg-blue-900/30' : 'bg-blue-50'}`}>
-                 <div className="text-2xl mb-1">🕌</div>
-                 <div className="text-lg font-bold text-blue-600">{completedPrayers.length} / 5</div>
-                 <div className="text-[10px] opacity-70">صلوات</div>
-              </div>
-              <div className={`p-3 rounded-2xl ${isDarkMode ? 'bg-amber-900/30' : 'bg-amber-50'}`}>
-                 <div className="text-2xl mb-1">❤️</div>
-                 <div className="text-lg font-bold text-amber-600">{goodDeedsCount}</div>
-                 <div className="text-[10px] opacity-70">أعمال</div>
-              </div>
+            <div className="flex-1 overflow-y-auto no-scrollbar space-y-6">
+                {/* STATS GRID */}
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className={`p-3 rounded-2xl ${isDarkMode ? 'bg-emerald-900/30' : 'bg-emerald-50'}`}>
+                     <div className="text-2xl mb-1">📿</div>
+                     <div className="text-lg font-bold text-emerald-600">{dhikrCount}</div>
+                     <div className="text-[10px] opacity-70">أذكار</div>
+                  </div>
+                  <div className={`p-3 rounded-2xl ${isDarkMode ? 'bg-blue-900/30' : 'bg-blue-50'}`}>
+                     <div className="text-2xl mb-1">🕌</div>
+                     <div className="text-lg font-bold text-blue-600">{completedPrayers.length} / 5</div>
+                     <div className="text-[10px] opacity-70">صلوات</div>
+                  </div>
+                  <div className={`p-3 rounded-2xl ${isDarkMode ? 'bg-amber-900/30' : 'bg-amber-50'}`}>
+                     <div className="text-2xl mb-1">❤️</div>
+                     <div className="text-lg font-bold text-amber-600">{goodDeedsCount}</div>
+                     <div className="text-[10px] opacity-70">أعمال</div>
+                  </div>
+                </div>
+
+                {/* PRAYERS CHECKLIST (Summary) */}
+                <div className={`rounded-xl p-4 border ${isDarkMode ? 'bg-slate-700/50 border-slate-600' : 'bg-slate-50 border-slate-100'}`}>
+                   <h4 className="text-sm font-bold mb-3 border-b pb-2 opacity-80 border-slate-200/20">تفقد الصلوات</h4>
+                   <div className="space-y-2">
+                     {PRAYERS_STRUCTURE.map(p => {
+                        const isDone = completedPrayers.includes(p.name);
+                        return (
+                          <div key={p.id} className="flex justify-between items-center">
+                            <span className="text-sm">{p.name}</span>
+                            <span className={`text-xs font-bold px-2 py-0.5 rounded ${isDone ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-400'}`}>
+                              {isDone ? '✅' : '⭕'}
+                            </span>
+                          </div>
+                        );
+                     })}
+                   </div>
+                </div>
+
+                {/* FULL LOGS (The requested feature) */}
+                <div className={`rounded-xl p-4 border ${isDarkMode ? 'bg-slate-700/50 border-slate-600' : 'bg-slate-50 border-slate-100'}`}>
+                   <h4 className="text-sm font-bold mb-3 border-b pb-2 opacity-80 border-slate-200/20">سجل النشاط الكامل</h4>
+                   <div className="space-y-2">
+                     {todayLogs.length === 0 ? (
+                        <p className="text-xs text-center opacity-50">لم يتم تسجيل نشاط بعد</p>
+                     ) : (
+                        todayLogs.sort((a, b) => b.timestamp - a.timestamp).map(log => (
+                          <div key={log.id} className={`p-3 rounded-lg text-xs flex justify-between items-start gap-2 ${isDarkMode ? 'bg-slate-800' : 'bg-white shadow-sm'}`}>
+                            <div className="flex flex-col gap-1 text-right flex-1">
+                                <span className="font-bold">{log.summary}</span>
+                                {log.details && <span className="opacity-70 text-[10px]">{log.details}</span>}
+                            </div>
+                            <span className={`opacity-50 font-mono text-[10px] whitespace-nowrap bg-black/5 px-1 rounded ${isDarkMode ? 'text-gray-400 bg-white/5' : 'text-slate-500'}`}>
+                                {new Date(log.timestamp).toLocaleTimeString('ar-EG', {hour: '2-digit', minute:'2-digit'})}
+                            </span>
+                          </div>
+                        ))
+                     )}
+                   </div>
+                </div>
             </div>
 
-            <div className={`rounded-xl p-4 mb-6 border ${isDarkMode ? 'bg-slate-700/50 border-slate-600' : 'bg-slate-50 border-slate-100'}`}>
-               <h4 className="text-sm font-bold mb-3 border-b pb-2 opacity-80 border-slate-200/20">تفقد الصلوات</h4>
-               <div className="space-y-2">
-                 {PRAYERS_STRUCTURE.map(p => {
-                    const isDone = completedPrayers.includes(p.name);
-                    return (
-                      <div key={p.id} className="flex justify-between items-center">
-                        <span className="text-sm">{p.name}</span>
-                        <span className={`text-xs font-bold px-2 py-0.5 rounded ${isDone ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-400'}`}>
-                          {isDone ? '✅ مكتملة' : '⭕ لم تسجل'}
-                        </span>
-                      </div>
-                    );
-                 })}
-               </div>
-            </div>
-
-            <button onClick={() => setShowReportModal(false)} className="w-full mt-6 py-3 rounded-xl bg-slate-200 text-slate-800 font-bold hover:bg-slate-300 transition-colors">
+            <button onClick={() => setShowReportModal(false)} className="w-full mt-4 py-3 rounded-xl bg-slate-200 text-slate-800 font-bold hover:bg-slate-300 transition-colors shrink-0">
               إغلاق
             </button>
           </div>

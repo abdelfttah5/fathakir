@@ -1,3 +1,4 @@
+
 import * as React from 'react';
 
 interface NavigationProps {
@@ -9,7 +10,7 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, onTabChange }
   const tabs = [
     { id: 'today', label: 'اليوم', icon: '📅' },
     { id: 'dhikr', label: 'أذكار', icon: '📿' },
-    { id: 'read', label: 'اقرأ', icon: '📖' },
+    { id: 'read', label: 'القرآن الكريم', icon: '📖' },
     { id: 'group', label: 'المجموعة', icon: '👥' },
   ];
 
