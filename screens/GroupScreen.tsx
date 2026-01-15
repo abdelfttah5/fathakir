@@ -54,8 +54,16 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
 
   const handleCopyLink = () => {
     if (!inviteCode) return;
-    // Generate Direct Link
-    const directLink = `${window.location.origin}${window.location.pathname}?inviteCode=${inviteCode}`;
+    
+    // RADICAL FIX: Encode group data to ensure joining works in Mock Mode across browsers
+    const groupPayload = btoa(JSON.stringify({ 
+      id: group.id, 
+      name: group.name, 
+      inviteCode: inviteCode 
+    }));
+
+    // Generate Direct Link with encoded data
+    const directLink = `${window.location.origin}${window.location.pathname}?inviteCode=${inviteCode}&d=${groupPayload}`;
     navigator.clipboard.writeText(directLink);
     alert('تم نسخ رابط الدعوة المباشر:\n' + directLink);
   };

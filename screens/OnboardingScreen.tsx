@@ -11,16 +11,18 @@ import {
   getUserGroup,
   resetPassword,
   observeAuthState,
-  logoutUser
+  logoutUser,
+  seedLocalGroup // Import seeding helper
 } from '../services/firebase';
 import { updateProfile } from "firebase/auth";
 
 interface OnboardingProps {
   onComplete: (user: User, group: Group) => void;
   initialInviteCode?: string | null;
+  initialGroupData?: Group | null; // Add prop for seeding
 }
 
-const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete, initialInviteCode }) => {
+const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete, initialInviteCode, initialGroupData }) => {
   // Phase: 'AUTH' (Login/Signup/QuickJoin) or 'GROUP' (Create/Join manually)
   const [phase, setPhase] = useState<'AUTH' | 'GROUP'>('AUTH');
   
@@ -154,6 +156,11 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete, initialInvite
 
         const codeClean = quickCode.trim().toUpperCase();
 
+        // ** RADICAL FIX **: Seed local group data if provided (handles Mock Mode sync issue)
+        if (initialGroupData) {
+           seedLocalGroup(initialGroupData);
+        }
+
         // 1. Create Anon User (Pass name to ensure it's saved)
         const user = await loginGuestUser(quickName);
         
@@ -230,6 +237,11 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete, initialInvite
         // JOIN
         if (!inviteToken.trim()) throw new Error("أدخل رمز الدعوة");
         const codeClean = inviteToken.trim().toUpperCase();
+
+        // ** RADICAL FIX **: Seed local group data if provided
+        if (initialGroupData) {
+           seedLocalGroup(initialGroupData);
+        }
 
         const foundGroup = await joinGroupInFirestore(codeClean, currentUser);
         if (!foundGroup) throw new Error("المجموعة غير موجودة أو الرمز خاطئ. تأكد من الرمز.");

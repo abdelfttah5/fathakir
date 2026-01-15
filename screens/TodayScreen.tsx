@@ -226,37 +226,27 @@ const TodayScreen: React.FC<TodayScreenProps> = ({
     setSharing(true);
     try {
       const element = document.getElementById('report-content');
-      if (element && (window as any).html2canvas) {
-        const canvas = await (window as any).html2canvas(element, {
-           backgroundColor: isDarkMode ? '#1e293b' : '#ffffff',
-           scale: 2
-        });
+      if (element && (window as any).html2pdf) {
+        // PDF Options
+        const opt = {
+          margin:       10,
+          filename:     `harvest_${dateStr.replace(/ /g, '_')}.pdf`,
+          image:        { type: 'jpeg', quality: 0.98 },
+          html2canvas:  { scale: 2, useCORS: true },
+          jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        };
+
+        // Generate PDF
+        await (window as any).html2pdf().set(opt).from(element).save();
         
-        canvas.toBlob((blob: Blob) => {
-           if (blob) {
-              const file = new File([blob], "fathakkir-harvest.png", { type: "image/png" });
-              if (navigator.share) {
-                 navigator.share({
-                    title: 'حصاد اليوم - فذكر',
-                    text: `حصاد يومي من تطبيق فذكر.`,
-                    files: [file]
-                 }).catch((e) => console.log('Sharing failed', e));
-              } else {
-                 const link = document.createElement('a');
-                 link.href = canvas.toDataURL("image/png");
-                 link.download = "fathakkir-harvest.png";
-                 link.click();
-              }
-           }
-           setSharing(false);
-        });
+        setSharing(false);
       } else {
         alert("خاصية المشاركة غير مدعومة في هذا المتصفح.");
         setSharing(false);
       }
     } catch (e) {
       console.error(e);
-      alert("حدث خطأ أثناء إنشاء الصورة.");
+      alert("حدث خطأ أثناء إنشاء الملف.");
       setSharing(false);
     }
   };
@@ -379,11 +369,11 @@ const TodayScreen: React.FC<TodayScreenProps> = ({
                  disabled={sharing}
                  className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors"
                >
-                 {sharing ? '...' : '📷'}
+                 {sharing ? '...' : '📄'}
                </button>
             </div>
             
-            <div id="report-content" className={`flex-1 overflow-y-auto no-scrollbar space-y-6 p-1 ${isDarkMode ? 'bg-slate-800' : 'bg-white'}`}>
+            <div id="report-content" className={`flex-1 overflow-y-auto no-scrollbar space-y-6 p-4 ${isDarkMode ? 'bg-slate-800' : 'bg-white'}`}>
                 {/* DATE & USER INFO (For screenshot context) */}
                 <div className="text-center pb-2 border-b border-dashed border-gray-500/20">
                    <p className="text-xs opacity-50">{dateStr}</p>

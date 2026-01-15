@@ -39,6 +39,7 @@ function App() {
   
   // Invite Link State
   const [pendingInviteCode, setPendingInviteCode] = useState<string | null>(null);
+  const [pendingGroupData, setPendingGroupData] = useState<Group | null>(null);
 
   // Real-time Data State
   const [logs, setLogs] = useState<ActivityLog[]>([]);
@@ -61,8 +62,23 @@ function App() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get('inviteCode');
+    const dataStr = params.get('d'); // Get encoded group data
+
     if (code) {
       setPendingInviteCode(code);
+      
+      // Parse encoded group data if available (Radical Fix for Mock Mode)
+      if (dataStr) {
+        try {
+          const decoded = JSON.parse(atob(dataStr));
+          if (decoded && decoded.id && decoded.name) {
+             setPendingGroupData(decoded);
+          }
+        } catch (e) {
+          console.error("Failed to parse group data from URL", e);
+        }
+      }
+
       // Optional: Clean URL
       window.history.replaceState({}, document.title, window.location.pathname);
     }
@@ -286,6 +302,7 @@ function App() {
                <OnboardingScreen 
                  onComplete={handleLogin} 
                  initialInviteCode={pendingInviteCode}
+                 initialGroupData={pendingGroupData}
                />
             </ScrollWrapper>
            );

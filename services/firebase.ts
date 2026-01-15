@@ -63,6 +63,18 @@ const forceSaveToLocalLog = (groupId: string, log: ActivityLog) => {
     setLocal(MOCK_STORAGE_KEYS.LOGS_DB, logs);
 };
 
+// Helper to seed group from URL (Radical Fix for Joining)
+export const seedLocalGroup = (groupData: Group) => {
+  if (!groupData || !groupData.id) return;
+  const groups = getLocal(MOCK_STORAGE_KEYS.GROUPS_DB);
+  const exists = groups.find((g: Group) => g.id === groupData.id);
+  if (!exists) {
+    groups.push(groupData);
+    setLocal(MOCK_STORAGE_KEYS.GROUPS_DB, groups);
+    console.log("Group seeded locally from URL data");
+  }
+};
+
 // ==========================================
 // AUTH SERVICES
 // ==========================================
