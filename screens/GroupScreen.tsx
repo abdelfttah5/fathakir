@@ -54,9 +54,10 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
 
   const handleCopyLink = () => {
     if (!inviteCode) return;
-    const dummyLink = `انضم لمجموعتي في تطبيق فذكر باستخدام الرمز: ${inviteCode}`;
-    navigator.clipboard.writeText(dummyLink);
-    alert('تم نسخ نص الدعوة: ' + dummyLink);
+    // Generate Direct Link
+    const directLink = `${window.location.origin}${window.location.pathname}?inviteCode=${inviteCode}`;
+    navigator.clipboard.writeText(directLink);
+    alert('تم نسخ رابط الدعوة المباشر:\n' + directLink);
   };
 
   const handleCreateMeet = async (type: 'NOW' | 'SCHEDULED') => {
@@ -227,7 +228,7 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
                    <p className={`text-3xl font-mono font-bold tracking-widest mb-4 select-all ${theme.text}`}>{inviteCode}</p>
                    <div className="flex gap-2 justify-center">
                      <button onClick={() => { navigator.clipboard.writeText(inviteCode); alert('تم نسخ الرمز'); }} className={`border py-2 px-6 rounded-lg text-sm font-bold flex-1 ${isDarkMode ? 'bg-[#333] border-[#444] text-white' : 'bg-white border-slate-300 text-slate-700'}`}>نسخ الرمز</button>
-                     <button onClick={handleCopyLink} className={`py-2 px-6 rounded-lg text-sm font-bold flex-1 ${isDarkMode ? 'bg-emerald-700 text-white' : 'bg-emerald-600 text-white'}`}>نسخ النص</button>
+                     <button onClick={handleCopyLink} className={`py-2 px-6 rounded-lg text-sm font-bold flex-1 ${isDarkMode ? 'bg-emerald-700 text-white' : 'bg-emerald-600 text-white'}`}>نسخ رابط الدعوة</button>
                    </div>
                    <p className={`text-[10px] mt-3 ${theme.subText}`}>أخبر عائلتك بتحميل التطبيق واختيار "انضمام لمجموعة" ثم إدخال هذا الرمز.</p>
                  </div>

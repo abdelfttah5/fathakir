@@ -37,6 +37,9 @@ function App() {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null); // Toast State
   
+  // Invite Link State
+  const [pendingInviteCode, setPendingInviteCode] = useState<string | null>(null);
+
   // Real-time Data State
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [members, setMembers] = useState<User[]>([]);
@@ -53,6 +56,17 @@ function App() {
   });
 
   const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(null);
+
+  // 0. Check URL for Invite Code (Direct Link Feature)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('inviteCode');
+    if (code) {
+      setPendingInviteCode(code);
+      // Optional: Clean URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
 
   // 1. Initial Auth & Persistence Check
   useEffect(() => {
@@ -269,7 +283,10 @@ function App() {
         if (safeGroup.id === 'guest_space') {
            return (
             <ScrollWrapper>
-               <OnboardingScreen onComplete={handleLogin} />
+               <OnboardingScreen 
+                 onComplete={handleLogin} 
+                 initialInviteCode={pendingInviteCode}
+               />
             </ScrollWrapper>
            );
         }

@@ -17,9 +17,10 @@ import { updateProfile } from "firebase/auth";
 
 interface OnboardingProps {
   onComplete: (user: User, group: Group) => void;
+  initialInviteCode?: string | null;
 }
 
-const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete }) => {
+const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete, initialInviteCode }) => {
   // Phase: 'AUTH' (Login/Signup/QuickJoin) or 'GROUP' (Create/Join manually)
   const [phase, setPhase] = useState<'AUTH' | 'GROUP'>('AUTH');
   
@@ -44,6 +45,15 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete }) => {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [showInfoModal, setShowInfoModal] = useState(false);
+
+  // Check for Direct Link
+  useEffect(() => {
+    if (initialInviteCode) {
+      setAuthMode('JOIN_CODE');
+      setQuickCode(initialInviteCode);
+      setInviteToken(initialInviteCode); // also set for manual join just in case
+    }
+  }, [initialInviteCode]);
 
   // 1. Check if user is already logged in (Persistent Session)
   useEffect(() => {
@@ -71,6 +81,10 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete }) => {
           } else {
             // Logged in but no group -> Force Go to Group Phase
             setPhase('GROUP');
+            if (initialInviteCode) {
+               setGroupMode('JOIN');
+               setInviteToken(initialInviteCode);
+            }
             setIsLoading(false);
           }
         } catch (err) {
@@ -343,8 +357,8 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete }) => {
                 {authMode === 'JOIN_CODE' && (
                   <>
                     <div className="bg-amber-50 p-4 rounded-xl text-xs text-amber-800 mb-4 border border-amber-100 leading-relaxed">
-                      <strong>هل حصلت على رمز دعوة؟</strong><br/>
-                      أدخل اسمك ورمز الدعوة للانضمام فوراً إلى المجموعة ورؤية الأعضاء الآخرين.
+                      <strong>انضمام سريع للمجموعة</strong><br/>
+                      {initialInviteCode ? 'تم تفعيل رابط الدعوة. أدخل اسمك للانضمام.' : 'أدخل اسمك ورمز الدعوة للانضمام فوراً.'}
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-600 mb-1">اسمك</label>
@@ -366,6 +380,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete }) => {
                         className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-center text-lg font-mono tracking-widest uppercase"
                         placeholder="XYZ-123"
                         required
+                        readOnly={!!initialInviteCode}
                       />
                     </div>
                   </>
@@ -477,6 +492,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete }) => {
                       onChange={(e) => setInviteToken(e.target.value.toUpperCase())}
                       className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-center text-lg font-mono tracking-widest uppercase"
                       placeholder="XYZ-123"
+                      readOnly={!!initialInviteCode}
                     />
                   </div>
                 )}
