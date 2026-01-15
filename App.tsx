@@ -21,7 +21,7 @@ import {
 } from './services/firebase';
 
 // FIX: Defined outside component to prevent re-mounting on every state change
-const ScrollWrapper = ({ children }: { children: React.ReactNode }) => (
+const ScrollWrapper = ({ children }: { children?: React.ReactNode }) => (
   <div className="h-full overflow-y-auto no-scrollbar pb-20">
     {children}
   </div>
@@ -380,18 +380,25 @@ function App() {
             <div className="absolute top-0 left-0 right-0 h-32 bg-sky-600 opacity-10 rounded-b-[50%]" style={{zIndex: 0}}></div>
             <div className="relative z-10">
                <div className={`w-28 h-28 mx-auto mb-6 rounded-full p-2 shadow-lg flex items-center justify-center border-4 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-sky-50 text-sky-600'}`}>
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-16 h-16">
-                    <path d="M11.25 4.533A9.707 9.707 0 006 3.75a9.707 9.707 0 00-5.25.833v11.666c1.036-.533 2.502-.833 3.75-.833 2.158 0 4.06.777 5.25 1.932V4.533zM12.75 4.533V17.35c1.19-1.155 3.092-1.932 5.25-1.932 1.248 0 2.714.3 3.75.833V4.583a9.707 9.707 0 00-5.25-.833 9.707 9.707 0 00-3.75.783z" />
-                  </svg>
+                  {/* APP LOGO SVG */}
+                  <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cpath fill='%2310b981' d='M256 0C114.6 0 0 114.6 0 256s114.6 256 256 256 256-114.6 256-256S397.4 0 256 0zM128 384c0-35.3 28.7-64 64-64h64c35.3 0 64 28.7 64 64H128zm128-96h-64c-17.7 0-32-14.3-32-32s14.3-32 32-32h64c17.7 0 32 14.3 32 32s-14.3 32-32 32zM362.7 253.9c-7.5-6.1-13.9-13.3-18.8-21.3l-20.8-33.4c-7.6-12.2-11.6-26.3-11.6-40.7 0-44.1 35.9-80 80-80 9.7 0 19 1.7 27.8 4.9-18.5-38.6-58.1-65.4-104.3-65.4-63.5 0-115 51.5-115 115 0 6.1.5 12.1 1.4 17.9l-19.1-30.6c-7.6-12.2-11.6-26.3-11.6-40.7 0-25 11.5-47.3 29.6-62.6-67.6 15.1-118.9 75.3-118.9 147.3 0 83.9 68.1 152 152 152h.9c-3.1-8.8-4.9-18.1-4.9-27.8 0-44.1 35.9-80 80-80 12.8 0 25.1 3 36.3 8.3-2.1-7.2-3.3-14.8-3.3-22.7 0-44.1 35.9-80 80-80z'/%3E%3C/svg%3E" alt="Logo" className="w-full h-full object-cover rounded-full" />
                </div>
                <h2 className="text-3xl font-bold font-amiri mb-2">فَذَكِّر</h2>
-               <p className="text-sm opacity-50 mb-8">إصدار 1.0.6</p>
-               <div className={`rounded-xl p-4 mb-6 border ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-100'}`}>
-                  <p className="font-amiri font-bold text-lg leading-loose mb-2">
-                    اللهم اغفر لوالديَّ وارحمهما كما ربَّياني صغيرًا.
+               <p className="text-sm opacity-50 mb-6">إصدار 1.0.7</p>
+               
+               {/* UPDATED DUA & COPYRIGHT */}
+               <div className={`rounded-xl p-4 mb-4 border ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-100'}`}>
+                  <p className="font-amiri font-bold text-lg leading-loose mb-2 text-emerald-600">
+                    اللَّهُمَّ اغْفِرْ لِوَالِدَيَّ وَارْحَمْهُمَا، كَمَا رَبَّيَانِي صَغِيرًا، وَاغْفِرْ لِأَمْوَاتِنَا وَأَمْوَاتِ الْمُسْلِمِينَ
                   </p>
                </div>
-               <div className="flex flex-col gap-2 justify-center mt-6">
+               
+               <div className="text-xs opacity-70 mb-6 font-mono leading-relaxed">
+                 <p className="font-bold">حقوق النشر - احمد عبد الفتاح</p>
+                 <p>abdelfttah71@gmail.com</p>
+               </div>
+
+               <div className="flex flex-col gap-2 justify-center mt-4">
                  {/* LOGOUT BUTTON - ENABLED FOR ALL */}
                  <button 
                    onClick={handleLogout}
