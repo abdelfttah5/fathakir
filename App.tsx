@@ -143,7 +143,8 @@ function App() {
   };
 
   const handleLogout = async () => {
-    if (window.confirm("هل أنت متأكد من تسجيل الخروج؟")) {
+    // UPDATED LOGOUT CONFIRMATION MESSAGE
+    if (window.confirm("اللهم اغفر لوالدي وارحمهما كما ربياني صغيرا \n\nهل أنت متأكد من الخروج؟")) {
       await logoutUser();
       localStorage.removeItem('fathakkir_guest_fallback');
       window.location.reload();

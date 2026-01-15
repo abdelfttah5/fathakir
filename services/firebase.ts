@@ -78,13 +78,18 @@ export const observeAuthState = (callback: (user: any | null) => void) => {
     mockAuthListeners.push(callback);
     return () => { mockAuthListeners = mockAuthListeners.filter(l => l !== callback); };
   } else {
-    // Real Firebase
+    // Real Firebase - Safety check for auth
+    if (!auth) {
+        console.warn("Auth object is undefined, falling back to mock behavior to prevent crash.");
+        callback(null);
+        return () => {};
+    }
     return onAuthStateChanged(auth, callback);
   }
 };
 
 export const registerUser = async (email: string, pass: string, name: string): Promise<User> => {
-  if (isMockMode) {
+  if (isMockMode || !auth) {
     const id = 'user_' + Date.now();
     const newUser: User = {
       id, name, email, isAdmin: false,
@@ -115,7 +120,7 @@ export const registerUser = async (email: string, pass: string, name: string): P
 };
 
 export const loginUser = async (email: string, pass: string): Promise<User> => {
-  if (isMockMode) {
+  if (isMockMode || !auth) {
     const users = getLocal(MOCK_STORAGE_KEYS.USERS_DB);
     const found = users.find((u: User) => u.email === email);
     if (found) {
@@ -143,7 +148,7 @@ export const loginUser = async (email: string, pass: string): Promise<User> => {
 };
 
 export const loginGuestUser = async (customName?: string): Promise<User> => {
-  if (isMockMode) {
+  if (isMockMode || !auth) {
     const id = 'guest_' + Date.now();
     const name = customName || `زائر ${id.substring(6, 10)}`;
     const newUser: User = {
@@ -191,7 +196,7 @@ export const loginGuestUser = async (customName?: string): Promise<User> => {
 };
 
 export const logoutUser = async () => {
-  if (isMockMode) {
+  if (isMockMode || !auth) {
     localStorage.removeItem(MOCK_STORAGE_KEYS.USER);
     mockNotifyAuth(null);
     return;
@@ -205,7 +210,7 @@ export const logoutUser = async () => {
 };
 
 export const resetPassword = async (email: string) => {
-  if (isMockMode) return;
+  if (isMockMode || !auth) return;
   await sendPasswordResetEmail(auth, email);
 };
 
@@ -300,32 +305,41 @@ export const updateGroupCode = async (groupId: string, newCode: string) => {
 };
 
 export const joinGroupInFirestore = async (inviteCode: string, user: User): Promise<Group | null> => {
-  if (isMockMode) {
-    const groups = getLocal(MOCK_STORAGE_KEYS.GROUPS_DB);
-    const group = groups.find((g: Group) => g.inviteCode === inviteCode.trim());
-    if (!group) throw new Error("رمز الدعوة غير صحيح");
-    const members = getLocal(MOCK_STORAGE_KEYS.MEMBERS_DB);
-    const existing = members.find((m: any) => m.userId === user.id && m.groupId === group.id);
-    if (!existing) {
-        members.push({ ...user, userId: user.id, groupId: group.id, joinedAt: Date.now() });
-        setLocal(MOCK_STORAGE_KEYS.MEMBERS_DB, members);
-    }
-    return group;
+  // FIX: Force persistence of membership even in Hybrid mode to ensure "My Group" UI updates instantly
+  const localGroups = getLocal(MOCK_STORAGE_KEYS.GROUPS_DB) || [];
+  const localGroup = localGroups.find((g: Group) => g.inviteCode === inviteCode.trim());
+  
+  // Logic to add member locally if group is found locally
+  if (localGroup) {
+      const members = getLocal(MOCK_STORAGE_KEYS.MEMBERS_DB);
+      const existing = members.find((m: any) => m.userId === user.id && m.groupId === localGroup.id);
+      if (!existing) {
+          members.push({ ...user, userId: user.id, groupId: localGroup.id, joinedAt: Date.now() });
+          setLocal(MOCK_STORAGE_KEYS.MEMBERS_DB, members);
+      }
   }
 
+  // If in Mock Mode, return local success immediately
+  if (isMockMode) {
+      if (localGroup) return localGroup;
+      throw new Error("رمز الدعوة غير صحيح");
+  }
+
+  // Real Firestore Logic
   try {
-    // 1. Find Group
     const q = query(collection(db, "groups"), where("inviteCode", "==", inviteCode.trim()));
     const querySnapshot = await getDocs(q);
     
     if (querySnapshot.empty) {
+      // Fallback: If found locally but not on server (sync issue), return local
+      if (localGroup) return localGroup;
       throw new Error("رمز الدعوة غير صحيح أو المجموعة غير موجودة");
     }
     
     const groupData = querySnapshot.docs[0].data() as Group;
     
-    // 2. Add Member (Ensure we use the authenticated ID)
-    const currentAuthId = auth.currentUser?.uid || user.id;
+    // CRITICAL FIX: Ensure we use the correct ID with optional chaining for auth
+    const currentAuthId = auth?.currentUser?.uid || user.id;
     
     const memberData = { 
       id: currentAuthId,
@@ -333,16 +347,27 @@ export const joinGroupInFirestore = async (inviteCode: string, user: User): Prom
       email: user.email || '',
       isAdmin: false,
       isGuest: user.isGuest || false,
-      userId: currentAuthId, // CRITICAL: Must match auth.uid for rules
+      userId: currentAuthId, 
       groupId: groupData.id, 
       joinedAt: Date.now() 
     };
 
+    // Save to Firestore
     await setDoc(doc(db, "group_members", `${groupData.id}_${currentAuthId}`), cleanUndefined(memberData));
     
+    // Also Force Save to Local Storage to ensure immediate UI update before listener fires
+    const members = getLocal(MOCK_STORAGE_KEYS.MEMBERS_DB);
+    const existing = members.find((m: any) => m.userId === currentAuthId && m.groupId === groupData.id);
+    if (!existing) {
+        members.push({ ...memberData, userId: currentAuthId, groupId: groupData.id });
+        setLocal(MOCK_STORAGE_KEYS.MEMBERS_DB, members);
+    }
+
     return groupData;
   } catch (error: any) {
     console.error("Error joining group in Firestore:", error);
+    // If we have local success, don't block user
+    if (localGroup) return localGroup;
     throw new Error("تعذر الانضمام للمجموعة. تأكد من صحة الرمز أو اتصال الإنترنت.");
   }
 };
@@ -357,12 +382,10 @@ export const leaveGroupInFirestore = async (userId: string, groupId: string) => 
 
   // 2. Remove from Real Firestore
   try {
-    // We construct the ID based on the logic in creation: groupId_userId
     await deleteDoc(doc(db, "group_members", `${groupId}_${userId}`));
     return true;
   } catch (e) {
     console.error("Error leaving group in Firestore:", e);
-    // Return false, but we already cleared local so UI might update anyway.
     return false;
   }
 };

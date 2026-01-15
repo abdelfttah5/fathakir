@@ -134,6 +134,7 @@ const TodayScreen: React.FC<TodayScreenProps> = ({
   const [selectedCountry, setSelectedCountry] = useState(COUNTRIES[0]); // Default Oman
   const [selectedCity, setSelectedCity] = useState("صلالة"); // Default Salalah
   const [loadingPrayers, setLoadingPrayers] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   const today = new Date();
   const dateStr = today.toLocaleDateString('ar-EG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
@@ -221,6 +222,45 @@ const TodayScreen: React.FC<TodayScreenProps> = ({
     if (type === 'FARD') alert(`تم تسجيل ${summary}`);
   };
 
+  const handleShareReport = async () => {
+    setSharing(true);
+    try {
+      const element = document.getElementById('report-content');
+      if (element && (window as any).html2canvas) {
+        const canvas = await (window as any).html2canvas(element, {
+           backgroundColor: isDarkMode ? '#1e293b' : '#ffffff',
+           scale: 2
+        });
+        
+        canvas.toBlob((blob: Blob) => {
+           if (blob) {
+              const file = new File([blob], "fathakkir-harvest.png", { type: "image/png" });
+              if (navigator.share) {
+                 navigator.share({
+                    title: 'حصاد اليوم - فذكر',
+                    text: `حصاد يومي من تطبيق فذكر.`,
+                    files: [file]
+                 }).catch((e) => console.log('Sharing failed', e));
+              } else {
+                 const link = document.createElement('a');
+                 link.href = canvas.toDataURL("image/png");
+                 link.download = "fathakkir-harvest.png";
+                 link.click();
+              }
+           }
+           setSharing(false);
+        });
+      } else {
+        alert("خاصية المشاركة غير مدعومة في هذا المتصفح.");
+        setSharing(false);
+      }
+    } catch (e) {
+      console.error(e);
+      alert("حدث خطأ أثناء إنشاء الصورة.");
+      setSharing(false);
+    }
+  };
+
   const currentDeedCategory = GOOD_DEEDS_CATEGORIES.find(c => c.value === activeDeedTab) || GOOD_DEEDS_CATEGORIES[0];
 
   return (
@@ -275,7 +315,7 @@ const TodayScreen: React.FC<TodayScreenProps> = ({
           className={`w-24 h-24 rounded-full border shadow-sm flex flex-col items-center justify-center gap-2 active:scale-95 transition-all group hover:shadow-md ${isDarkMode ? 'bg-gradient-to-br from-amber-900 to-orange-900 border-amber-800' : 'bg-gradient-to-br from-amber-50 to-orange-50 border-amber-100'}`}
         >
           <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xl shadow-sm transition-transform group-hover:scale-110 ${isDarkMode ? 'bg-slate-800 text-amber-400' : 'bg-white text-amber-600'}`}>📖</div>
-          <span className={`text-xs font-bold ${isDarkMode ? 'text-amber-200' : 'text-amber-900'}`}>أقرأ</span>
+          <span className={`text-xs font-bold ${isDarkMode ? 'text-amber-200' : 'text-amber-900'}`}>القرآن الكريم</span>
         </button>
 
         <button 
@@ -329,9 +369,27 @@ const TodayScreen: React.FC<TodayScreenProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-fade-in" onClick={() => setShowReportModal(false)}>
           <div className={`w-full max-w-sm rounded-3xl p-6 shadow-2xl overflow-hidden relative flex flex-col h-[75vh] ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-white text-slate-800'}`} onClick={e => e.stopPropagation()}>
             <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-emerald-400 to-blue-500"></div>
-            <h3 className="text-xl font-bold text-center mb-4 mt-2 shrink-0">📊 حصاد اليوم</h3>
             
-            <div className="flex-1 overflow-y-auto no-scrollbar space-y-6">
+            {/* Header with Share Button */}
+            <div className="flex justify-between items-center mb-4 mt-2 shrink-0">
+               <div className="w-8"></div> {/* Spacer */}
+               <h3 className="text-xl font-bold text-center">📊 حصاد اليوم</h3>
+               <button 
+                 onClick={handleShareReport}
+                 disabled={sharing}
+                 className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors"
+               >
+                 {sharing ? '...' : '📷'}
+               </button>
+            </div>
+            
+            <div id="report-content" className={`flex-1 overflow-y-auto no-scrollbar space-y-6 p-1 ${isDarkMode ? 'bg-slate-800' : 'bg-white'}`}>
+                {/* DATE & USER INFO (For screenshot context) */}
+                <div className="text-center pb-2 border-b border-dashed border-gray-500/20">
+                   <p className="text-xs opacity-50">{dateStr}</p>
+                   <p className="text-sm font-bold mt-1 text-emerald-600">{user.name}</p>
+                </div>
+
                 {/* STATS GRID */}
                 <div className="grid grid-cols-3 gap-2 text-center">
                   <div className={`p-3 rounded-2xl ${isDarkMode ? 'bg-emerald-900/30' : 'bg-emerald-50'}`}>
@@ -389,6 +447,9 @@ const TodayScreen: React.FC<TodayScreenProps> = ({
                         ))
                      )}
                    </div>
+                </div>
+                <div className="text-center pt-4 opacity-50 text-[10px]">
+                   تم الإنشاء عبر تطبيق فذكر
                 </div>
             </div>
 

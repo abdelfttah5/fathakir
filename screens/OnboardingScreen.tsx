@@ -24,12 +24,12 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete }) => {
   const [phase, setPhase] = useState<'AUTH' | 'GROUP'>('AUTH');
   
   // Auth State
-  const [authMode, setAuthMode] = useState<'LOGIN' | 'REGISTER' | 'JOIN_CODE'>('LOGIN');
+  const [authMode, setAuthMode] = useState<'LOGIN' | 'REGISTER' | 'JOIN_CODE' | 'QUICK_CREATE'>('LOGIN');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   
-  // Quick Join State
+  // Quick Join/Create State
   const [quickName, setQuickName] = useState('');
   const [quickCode, setQuickCode] = useState('');
   
@@ -153,7 +153,19 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete }) => {
         } else {
            throw new Error("لم يتم العثور على المجموعة");
         }
-      } 
+      } else if (authMode === 'QUICK_CREATE') {
+        // QUICK CREATE GROUP FLOW
+        if (!quickName.trim()) throw new Error("الرجاء إدخال الاسم");
+        
+        // 1. Create Guest User
+        const user = await loginGuestUser(quickName);
+        setCurrentUser(user);
+
+        // 2. Move directly to Create Group UI (Auto-select CREATE)
+        setPhase('GROUP');
+        setGroupMode('CREATE');
+        setIsLoading(false);
+      }
     } catch (err: any) {
       console.error(err);
       setError(translateError(err.code || err.message || err.toString()));
@@ -358,6 +370,27 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete }) => {
                     </div>
                   </>
                 )}
+                
+                {/* 3. QUICK CREATE (New Feature) */}
+                {authMode === 'QUICK_CREATE' && (
+                   <>
+                    <div className="bg-emerald-50 p-4 rounded-xl text-xs text-emerald-800 mb-4 border border-emerald-100 leading-relaxed">
+                      <strong>إنشاء مجموعة فورية</strong><br/>
+                      ابدأ مجموعتك الخاصة فوراً كزائر دون الحاجة للبريد الإلكتروني.
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">اسمك</label>
+                      <input
+                        type="text"
+                        value={quickName}
+                        onChange={(e) => setQuickName(e.target.value)}
+                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
+                        placeholder="الاسم الذي سيظهر للأعضاء"
+                        required
+                      />
+                    </div>
+                   </>
+                )}
 
                 {error && <div className="text-red-500 text-xs bg-red-50 p-3 rounded-lg text-center font-bold" style={{direction: 'ltr'}}>{error}</div>}
                 {successMsg && <div className="text-emerald-600 text-xs bg-emerald-50 p-3 rounded-lg text-center font-bold">{successMsg}</div>}
@@ -367,8 +400,28 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete }) => {
                   disabled={!!successMsg}
                   className="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-emerald-200 active:scale-95 transition-all disabled:opacity-50"
                 >
-                  {authMode === 'LOGIN' ? 'دخول' : authMode === 'REGISTER' ? 'إنشاء الحساب' : 'انضمام للمجموعة'}
+                  {authMode === 'LOGIN' ? 'دخول' : authMode === 'REGISTER' ? 'إنشاء الحساب' : authMode === 'QUICK_CREATE' ? 'متابعة لإنشاء المجموعة' : 'انضمام للمجموعة'}
                 </button>
+
+                {authMode !== 'QUICK_CREATE' && (
+                  <button
+                    type="button" 
+                    onClick={() => { setAuthMode('QUICK_CREATE'); setError(''); }}
+                    className="w-full py-3 rounded-xl font-bold border-2 border-dashed border-emerald-200 text-emerald-600 hover:bg-emerald-50 transition-colors mt-2"
+                  >
+                    🚀 إنشاء مجموعة فورية (بدون تسجيل)
+                  </button>
+                )}
+                
+                {authMode === 'QUICK_CREATE' && (
+                   <button
+                    type="button" 
+                    onClick={() => { setAuthMode('LOGIN'); setError(''); }}
+                    className="w-full py-2 text-xs font-bold text-slate-400 mt-2"
+                  >
+                    عودة لتسجيل الدخول
+                  </button>
+                )}
 
                 {authMode === 'LOGIN' && (
                   <button 
