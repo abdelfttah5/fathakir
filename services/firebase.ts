@@ -63,16 +63,47 @@ const forceSaveToLocalLog = (groupId: string, log: ActivityLog) => {
     setLocal(MOCK_STORAGE_KEYS.LOGS_DB, logs);
 };
 
-// Helper to seed group from URL (Radical Fix for Joining)
-export const seedLocalGroup = (groupData: Group) => {
-  if (!groupData || !groupData.id) return;
+// ==========================================
+// RADICAL FIX: SEEDING & FORCED JOIN
+// ==========================================
+
+// This function takes group data from the URL and FORCEFULLY creates it in the local browser
+// ensuring the user can "join" it even if it doesn't exist on a central server (Mock Mode).
+export const joinGroupViaSeeding = async (groupData: Group, user: User): Promise<Group> => {
+  // 1. Force Create/Update Group Locally
   const groups = getLocal(MOCK_STORAGE_KEYS.GROUPS_DB);
-  const exists = groups.find((g: Group) => g.id === groupData.id);
-  if (!exists) {
+  const existingGroupIndex = groups.findIndex((g: Group) => g.id === groupData.id);
+  
+  if (existingGroupIndex > -1) {
+    // Group exists, update it just in case
+    groups[existingGroupIndex] = { ...groups[existingGroupIndex], ...groupData };
+  } else {
+    // Create new locally based on shared data
     groups.push(groupData);
-    setLocal(MOCK_STORAGE_KEYS.GROUPS_DB, groups);
-    console.log("Group seeded locally from URL data");
   }
+  setLocal(MOCK_STORAGE_KEYS.GROUPS_DB, groups);
+
+  // 2. Force Add Member Locally
+  const members = getLocal(MOCK_STORAGE_KEYS.MEMBERS_DB);
+  const membershipExists = members.some((m: any) => m.userId === user.id && m.groupId === groupData.id);
+  
+  if (!membershipExists) {
+    const newMember = {
+      id: user.id, // Auth ID
+      userId: user.id,
+      groupId: groupData.id,
+      name: user.name,
+      email: user.email || '',
+      isAdmin: false,
+      isGuest: !!user.isGuest,
+      joinedAt: Date.now()
+    };
+    members.push(newMember);
+    setLocal(MOCK_STORAGE_KEYS.MEMBERS_DB, members);
+  }
+
+  // 3. Return the group object
+  return groupData;
 };
 
 // ==========================================
@@ -92,7 +123,6 @@ export const observeAuthState = (callback: (user: any | null) => void) => {
   } else {
     // Real Firebase - Safety check for auth
     if (!auth) {
-        console.warn("Auth object is undefined, falling back to mock behavior to prevent crash.");
         callback(null);
         return () => {};
     }
@@ -308,7 +338,6 @@ export const updateGroupCode = async (groupId: string, newCode: string) => {
 
     if (isMockMode) return;
 
-    // 2. Real Update
     try {
         await updateDoc(doc(db, "groups", groupId), { inviteCode: newCode });
     } catch (e) {
@@ -316,25 +345,19 @@ export const updateGroupCode = async (groupId: string, newCode: string) => {
     }
 };
 
+// NOTE: This function is still used for manual code entry
 export const joinGroupInFirestore = async (inviteCode: string, user: User): Promise<Group | null> => {
-  // FIX: Force persistence of membership even in Hybrid mode to ensure "My Group" UI updates instantly
   const localGroups = getLocal(MOCK_STORAGE_KEYS.GROUPS_DB) || [];
   const localGroup = localGroups.find((g: Group) => g.inviteCode === inviteCode.trim());
   
-  // Logic to add member locally if group is found locally
   if (localGroup) {
-      const members = getLocal(MOCK_STORAGE_KEYS.MEMBERS_DB);
-      const existing = members.find((m: any) => m.userId === user.id && m.groupId === localGroup.id);
-      if (!existing) {
-          members.push({ ...user, userId: user.id, groupId: localGroup.id, joinedAt: Date.now() });
-          setLocal(MOCK_STORAGE_KEYS.MEMBERS_DB, members);
-      }
+      await joinGroupViaSeeding(localGroup, user);
+      return localGroup;
   }
 
-  // If in Mock Mode, return local success immediately
+  // If in Mock Mode, return failure if not found locally
   if (isMockMode) {
-      if (localGroup) return localGroup;
-      throw new Error("رمز الدعوة غير صحيح");
+      throw new Error("لم يتم العثور على المجموعة برمز الدعوة هذا.");
   }
 
   // Real Firestore Logic
@@ -343,44 +366,15 @@ export const joinGroupInFirestore = async (inviteCode: string, user: User): Prom
     const querySnapshot = await getDocs(q);
     
     if (querySnapshot.empty) {
-      // Fallback: If found locally but not on server (sync issue), return local
-      if (localGroup) return localGroup;
       throw new Error("رمز الدعوة غير صحيح أو المجموعة غير موجودة");
     }
     
     const groupData = querySnapshot.docs[0].data() as Group;
-    
-    // CRITICAL FIX: Ensure we use the correct ID with optional chaining for auth
-    const currentAuthId = auth?.currentUser?.uid || user.id;
-    
-    const memberData = { 
-      id: currentAuthId,
-      name: user.name, 
-      email: user.email || '',
-      isAdmin: false,
-      isGuest: user.isGuest || false,
-      userId: currentAuthId, 
-      groupId: groupData.id, 
-      joinedAt: Date.now() 
-    };
-
-    // Save to Firestore
-    await setDoc(doc(db, "group_members", `${groupData.id}_${currentAuthId}`), cleanUndefined(memberData));
-    
-    // Also Force Save to Local Storage to ensure immediate UI update before listener fires
-    const members = getLocal(MOCK_STORAGE_KEYS.MEMBERS_DB);
-    const existing = members.find((m: any) => m.userId === currentAuthId && m.groupId === groupData.id);
-    if (!existing) {
-        members.push({ ...memberData, userId: currentAuthId, groupId: groupData.id });
-        setLocal(MOCK_STORAGE_KEYS.MEMBERS_DB, members);
-    }
-
+    await joinGroupViaSeeding(groupData, user); // Reuse the logic to add member
     return groupData;
   } catch (error: any) {
     console.error("Error joining group in Firestore:", error);
-    // If we have local success, don't block user
-    if (localGroup) return localGroup;
-    throw new Error("تعذر الانضمام للمجموعة. تأكد من صحة الرمز أو اتصال الإنترنت.");
+    throw new Error("تعذر الانضمام للمجموعة. تأكد من صحة الرمز.");
   }
 };
 
@@ -426,7 +420,6 @@ export const subscribeToMembers = (groupId: string, callback: (members: User[]) 
       snapshot.forEach((doc) => members.push(doc.data() as User));
       callback(members);
     }, (error) => {
-      console.warn("Firestore Members Subscription failed, using local", error);
       fetchLocal();
     });
   } catch (e) {
@@ -443,7 +436,7 @@ export const subscribeToLogs = (groupId: string, callback: (logs: ActivityLog[])
       const groupLogs = allLogs
         .filter((l: any) => l.groupId === groupId)
         .sort((a: ActivityLog, b: ActivityLog) => b.timestamp - a.timestamp)
-        .slice(0, 300); // Increased local limit too
+        .slice(0, 300);
       
       callback(groupLogs);
   };
@@ -459,16 +452,13 @@ export const subscribeToLogs = (groupId: string, callback: (logs: ActivityLog[])
       collection(db, "activity_logs"), 
       where("groupId", "==", groupId), 
       orderBy("timestamp", "desc"), 
-      limit(300) // INCREASED LIMIT FROM 50 TO 300
+      limit(300)
     );
     return onSnapshot(q, (snapshot) => {
       const logs: ActivityLog[] = [];
       snapshot.forEach((doc) => logs.push(doc.data() as ActivityLog));
       callback(logs);
     }, (error) => {
-      // REMOVED: Aggressive setInterval fallback which caused flickering ("coming and going")
-      console.warn("Firestore logs subscription error:", error);
-      // Try local once, but don't loop it to avoid race conditions
       fetchLocal();
     });
   } catch (e) {
