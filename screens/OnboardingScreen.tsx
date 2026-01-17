@@ -18,7 +18,7 @@ import {
 interface OnboardingProps {
   onComplete: (user: User, group: Group) => void;
   initialInviteCode?: string | null;
-  initialGroupData?: Group | null;
+  initialGroupData?: any | null; // Changed to any to support extended props
 }
 
 const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete, initialInviteCode, initialGroupData }) => {
@@ -149,18 +149,20 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete, initialInvite
         if (initialGroupData) {
            // FORCE JOIN via Seeding (Reliable)
            group = await joinGroupViaSeeding(initialGroupData, user);
+           // CUSTOM SUCCESS MESSAGE FOR INVITE
+           setSuccessMsg(`🎉 تم الانضمام بنجاح بدعوة من ${initialGroupData.adminName || 'المشرف'}!`);
         } else {
            // Search by Code (Fallback)
            if (!quickCode.trim()) throw new Error("الرجاء إدخال رمز الدعوة");
            const codeClean = quickCode.trim().toUpperCase();
            group = await joinGroupInFirestore(codeClean, user);
+           setSuccessMsg("تم الانضمام بنجاح! جاري تحويلك...");
         }
 
         if (group) {
-          setSuccessMsg("تم الانضمام بنجاح! جاري تحويلك...");
           setTimeout(() => {
              onComplete(user, group!);
-          }, 1500);
+          }, 2000);
         } else {
            throw new Error("لم يتم العثور على المجموعة");
         }
@@ -244,9 +246,9 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete, initialInvite
         <div className="w-full max-w-md bg-white rounded-3xl shadow-xl overflow-hidden mb-8 border-2 border-emerald-500">
            <div className="bg-emerald-600 p-8 text-center text-white">
               <div className="text-4xl mb-2">💌</div>
-              <h1 className="text-xl font-bold">دعوة للانضمام</h1>
+              <h1 className="text-xl font-bold">دعوة خاصة</h1>
               <p className="text-emerald-100 opacity-90 text-sm mt-2">
-                تمت دعوتك للانضمام إلى مجموعة:
+                دعاك <strong>{initialGroupData.adminName || 'صديق'}</strong> للانضمام إلى:
               </p>
               <div className="bg-white/10 p-3 rounded-xl mt-3 backdrop-blur-sm border border-white/20">
                  <h2 className="text-2xl font-bold font-amiri">{initialGroupData.name}</h2>
@@ -273,14 +275,20 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ onComplete, initialInvite
 
                  {error && <div className="text-red-500 text-xs bg-red-50 p-3 rounded-lg text-center font-bold">{error}</div>}
                  
-                 <button 
-                    type="submit" 
-                    onClick={() => setAuthMode('JOIN_CODE')}
-                    disabled={!quickName.trim()}
-                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-xl font-bold shadow-lg shadow-emerald-200 active:scale-95 transition-all disabled:opacity-50 text-lg"
-                  >
-                    قبول الدعوة والانضمام ✅
-                  </button>
+                 {successMsg ? (
+                    <div className="bg-emerald-100 border border-emerald-300 text-emerald-800 p-4 rounded-xl text-center font-bold animate-fade-in">
+                       {successMsg}
+                    </div>
+                 ) : (
+                    <button 
+                      type="submit" 
+                      onClick={() => setAuthMode('JOIN_CODE')}
+                      disabled={!quickName.trim()}
+                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-xl font-bold shadow-lg shadow-emerald-200 active:scale-95 transition-all disabled:opacity-50 text-lg"
+                    >
+                      قبول وانضمام ✅
+                    </button>
+                 )}
               </form>
            </div>
         </div>

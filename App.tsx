@@ -39,7 +39,7 @@ function App() {
   
   // Invite Link State
   const [pendingInviteCode, setPendingInviteCode] = useState<string | null>(null);
-  const [pendingGroupData, setPendingGroupData] = useState<Group | null>(null);
+  const [pendingGroupData, setPendingGroupData] = useState<any | null>(null); // Changed type to allow extra props
 
   // Real-time Data State
   const [logs, setLogs] = useState<ActivityLog[]>([]);

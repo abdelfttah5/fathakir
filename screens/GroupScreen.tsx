@@ -55,11 +55,13 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
   const handleCopyLink = () => {
     if (!inviteCode) return;
     
-    // RADICAL FIX: Encode group data to ensure joining works in Mock Mode across browsers
+    // RADICAL FIX: Encode group data + ADMIN NAME to ensure "Joining" shows the creator
     const groupPayload = btoa(JSON.stringify({ 
       id: group.id, 
       name: group.name, 
-      inviteCode: inviteCode 
+      inviteCode: inviteCode,
+      adminName: user.name, // Pass the creator name
+      adminId: user.id      // Pass the creator ID
     }));
 
     // Generate Direct Link with encoded data

@@ -69,7 +69,7 @@ const forceSaveToLocalLog = (groupId: string, log: ActivityLog) => {
 
 // This function takes group data from the URL and FORCEFULLY creates it in the local browser
 // ensuring the user can "join" it even if it doesn't exist on a central server (Mock Mode).
-export const joinGroupViaSeeding = async (groupData: Group, user: User): Promise<Group> => {
+export const joinGroupViaSeeding = async (groupData: Group | any, user: User): Promise<Group> => {
   // 1. Force Create/Update Group Locally
   const groups = getLocal(MOCK_STORAGE_KEYS.GROUPS_DB);
   const existingGroupIndex = groups.findIndex((g: Group) => g.id === groupData.id);
@@ -83,7 +83,7 @@ export const joinGroupViaSeeding = async (groupData: Group, user: User): Promise
   }
   setLocal(MOCK_STORAGE_KEYS.GROUPS_DB, groups);
 
-  // 2. Force Add Member Locally
+  // 2. Force Add CURRENT USER as Member
   const members = getLocal(MOCK_STORAGE_KEYS.MEMBERS_DB);
   const membershipExists = members.some((m: any) => m.userId === user.id && m.groupId === groupData.id);
   
@@ -99,10 +99,29 @@ export const joinGroupViaSeeding = async (groupData: Group, user: User): Promise
       joinedAt: Date.now()
     };
     members.push(newMember);
-    setLocal(MOCK_STORAGE_KEYS.MEMBERS_DB, members);
   }
 
-  // 3. Return the group object
+  // 3. RADICAL FIX: Add the ADMIN/INVITER (passed in link) as a "Ghost Member"
+  // This simulates the group having other people without needing a real server query
+  if (groupData.adminName && groupData.adminId && groupData.adminId !== user.id) {
+     const adminExists = members.some((m: any) => m.userId === groupData.adminId && m.groupId === groupData.id);
+     if (!adminExists) {
+       const adminMember = {
+         id: groupData.adminId,
+         userId: groupData.adminId,
+         groupId: groupData.id,
+         name: groupData.adminName,
+         isAdmin: true,
+         isGuest: false,
+         joinedAt: Date.now() - 10000 // Joined before me
+       };
+       members.push(adminMember);
+     }
+  }
+
+  setLocal(MOCK_STORAGE_KEYS.MEMBERS_DB, members);
+
+  // 4. Return the group object
   return groupData;
 };
 
