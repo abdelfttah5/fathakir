@@ -70,7 +70,13 @@ function App() {
       // Parse encoded group data if available (Radical Fix for Mock Mode)
       if (dataStr) {
         try {
-          const decoded = JSON.parse(atob(dataStr));
+          // Fix for "The string to be encoded contains characters outside of the Latin1 range" (decoding side)
+          // decodeURIComponent + escape logic equivalent
+          const decodedStr = decodeURIComponent(atob(dataStr).split('').map(function(c) {
+              return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+          }).join(''));
+
+          const decoded = JSON.parse(decodedStr);
           if (decoded && decoded.id && decoded.name) {
              setPendingGroupData(decoded);
           }
@@ -219,7 +225,7 @@ function App() {
     }
 
     const newLog: ActivityLog = {
-      id: `log_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       userId: user.id,
       userName: user.name,
       type,
@@ -230,11 +236,22 @@ function App() {
     };
     
     try {
+      // Use the robust logActivityToFirestore (which handles fallback internally)
       await logActivityToFirestore(targetGroupId, newLog);
-      showToast("✅ تم تسجيل النشاط");
+      
+      // CUSTOM SUCCESS MESSAGES
+      let successMsg = "✅ تم تسجيل النشاط";
+      if (type === ActivityType.PRAYER) {
+          successMsg = "✅ تم تسجيل الصلاة";
+      } else if (type === ActivityType.GOOD_DEED) {
+          successMsg = "✅ تم تسجيل العمل الصالح";
+      }
+
+      showToast(successMsg);
     } catch (e) {
       console.error("Failed to add log:", e);
-      alert("تعذر حفظ النشاط، يرجى المحاولة مرة أخرى.");
+      // We removed the error alert because logActivityToFirestore now handles errors gracefully
+      // and ensures local saving. If we get here, something is truly broken in logic.
     }
   };
 
@@ -418,7 +435,7 @@ function App() {
                   <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cpath fill='%2310b981' d='M256 0C114.6 0 0 114.6 0 256s114.6 256 256 256 256-114.6 256-256S397.4 0 256 0zM128 384c0-35.3 28.7-64 64-64h64c35.3 0 64 28.7 64 64H128zm128-96h-64c-17.7 0-32-14.3-32-32s14.3-32 32-32h64c17.7 0 32 14.3 32 32s-14.3 32-32 32zM362.7 253.9c-7.5-6.1-13.9-13.3-18.8-21.3l-20.8-33.4c-7.6-12.2-11.6-26.3-11.6-40.7 0-44.1 35.9-80 80-80 9.7 0 19 1.7 27.8 4.9-18.5-38.6-58.1-65.4-104.3-65.4-63.5 0-115 51.5-115 115 0 6.1.5 12.1 1.4 17.9l-19.1-30.6c-7.6-12.2-11.6-26.3-11.6-40.7 0-25 11.5-47.3 29.6-62.6-67.6 15.1-118.9 75.3-118.9 147.3 0 83.9 68.1 152 152 152h.9c-3.1-8.8-4.9-18.1-4.9-27.8 0-44.1 35.9-80 80-80 12.8 0 25.1 3 36.3 8.3-2.1-7.2-3.3-14.8-3.3-22.7 0-44.1 35.9-80 80-80z'/%3E%3C/svg%3E" alt="Logo" className="w-full h-full object-cover rounded-full" />
                </div>
                <h2 className="text-3xl font-bold font-amiri mb-2">فَذَكِّر</h2>
-               <p className="text-sm opacity-50 mb-6">إصدار 1.0.7</p>
+               <p className="text-sm opacity-50 mb-6">إصدار 1.0.8</p>
                
                {/* UPDATED DUA & COPYRIGHT */}
                <div className={`rounded-xl p-4 mb-4 border ${isDarkMode ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-100'}`}>

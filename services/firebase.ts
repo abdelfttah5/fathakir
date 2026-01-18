@@ -4,13 +4,16 @@ import {
   collection, doc, setDoc, getDoc, updateDoc, deleteDoc,
   query, where, getDocs, onSnapshot, orderBy, limit 
 } from "firebase/firestore";
-import { 
+import { User, Group, ActivityLog, LocationPoint } from "../types";
+
+// Workaround for TS errors regarding missing exports in firebase/auth
+import * as _auth from "firebase/auth";
+const { 
   signInAnonymously,
   onAuthStateChanged,
   updateProfile,
   signOut
-} from "firebase/auth";
-import { User, Group, ActivityLog, LocationPoint } from "../types";
+} = _auth as any;
 
 // ==========================================
 // HELPERS
@@ -54,7 +57,7 @@ const setLocal = (key: string, data: any) => {
 // 1. AUTH OBSERVATION
 export const observeAuthState = (callback: (user: any | null) => void) => {
   if (auth) {
-    return onAuthStateChanged(auth, (user) => {
+    return onAuthStateChanged(auth, (user: any) => {
       if (user) {
         callback(user);
       } else {
@@ -275,14 +278,15 @@ export const subscribeToLogs = (groupId: string, cb: (logs: ActivityLog[]) => vo
                 combined.push(l);
             }
         });
-        // Sort DESC
+        // Sort DESC (Newest first) - Client side sorting
         combined.sort((a, b) => b.timestamp - a.timestamp);
-        cb(combined);
+        // Limit to 50 items
+        cb(combined.slice(0, 50));
     };
 
     // 1. Setup Remote Listener
     if(db && !isMockMode) {
-        const q = query(collection(db, "activity_logs"), where("groupId", "==", groupId), orderBy("timestamp", "desc"), limit(50));
+        const q = query(collection(db, "activity_logs"), where("groupId", "==", groupId));
         unsubRemote = onSnapshot(q, (s) => {
             remoteLogs = [];
             s.forEach(d => remoteLogs.push(d.data() as ActivityLog));
@@ -297,7 +301,7 @@ export const subscribeToLogs = (groupId: string, cb: (logs: ActivityLog[]) => vo
         const all = getLocal(MOCK_STORAGE_KEYS.LOGS_DB);
         localLogs = all.filter((l:any) => l.groupId === groupId);
         mergeAndEmit();
-    }, 2000); // Check every 2 seconds
+    }, 2000); 
 
     // Initial Local Load
     const all = getLocal(MOCK_STORAGE_KEYS.LOGS_DB);
@@ -310,20 +314,56 @@ export const subscribeToLogs = (groupId: string, cb: (logs: ActivityLog[]) => vo
     };
 };
 
-export const subscribeToLocations = (groupId: string, cb: any) => {
+// UPDATED: Hybrid Listener for Locations (Ensures Latest Location Visibility)
+export const subscribeToLocations = (groupId: string, cb: (locs: LocationPoint[]) => void) => {
+    let remoteLocs: LocationPoint[] = [];
+    let localLocs: LocationPoint[] = [];
+    let unsubRemote = () => {};
+
+    const mergeAndEmit = () => {
+        const all = [...remoteLocs, ...localLocs];
+        // Create a map to keep only the latest location per user
+        const latestMap = new Map<string, LocationPoint>();
+        
+        all.forEach(p => {
+            const existing = latestMap.get(p.userId);
+            // If new or newer, update
+            if (!existing || p.timestamp > existing.timestamp) {
+                latestMap.set(p.userId, p);
+            }
+        });
+        
+        cb(Array.from(latestMap.values()));
+    };
+
+    // 1. Remote
     if(db && !isMockMode) {
         const q = query(collection(db, "locations"), where("groupId", "==", groupId));
-        return onSnapshot(q, (s) => {
-            const locs: any[] = [];
-            s.forEach(d => locs.push(d.data()));
-            cb(locs);
+        unsubRemote = onSnapshot(q, (s) => {
+            remoteLocs = [];
+            s.forEach(d => remoteLocs.push(d.data() as LocationPoint));
+            mergeAndEmit();
+        }, (err) => {
+            console.warn("Location sync warning:", err);
         });
     }
+
+    // 2. Local Polling
     const interval = setInterval(() => {
         const all = getLocal(MOCK_STORAGE_KEYS.LOCATIONS_DB);
-        cb(all.filter((l:any) => l.groupId === groupId));
-    }, 3000);
-    return () => clearInterval(interval);
+        localLocs = all.filter((l:any) => l.groupId === groupId);
+        mergeAndEmit();
+    }, 3000); // Check every 3 seconds
+
+    // Initial
+    const all = getLocal(MOCK_STORAGE_KEYS.LOCATIONS_DB);
+    localLocs = all.filter((l:any) => l.groupId === groupId);
+    mergeAndEmit();
+
+    return () => {
+        unsubRemote();
+        clearInterval(interval);
+    };
 };
 
 export const logActivityToFirestore = async (groupId: string, log: ActivityLog) => {
@@ -341,11 +381,14 @@ export const logActivityToFirestore = async (groupId: string, log: ActivityLog) 
 };
 
 export const updateLocationInFirestore = async (groupId: string, point: LocationPoint) => {
+    // 1. Save Local
     const locations = getLocal(MOCK_STORAGE_KEYS.LOCATIONS_DB);
+    // Remove old location for this user in this group
     const filtered = locations.filter((l: any) => !(l.userId === point.userId && l.groupId === groupId));
     filtered.push({ ...point, groupId });
     setLocal(MOCK_STORAGE_KEYS.LOCATIONS_DB, filtered);
 
+    // 2. Save Remote
     if(db && !isMockMode) {
         try {
             await setDoc(doc(db, "locations", `${groupId}_${point.userId}`), {

@@ -65,6 +65,7 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
       adminId: user.id      
     });
 
+    // Robust encoding for Arabic characters
     const groupPayload = btoa(encodeURIComponent(rawData).replace(/%([0-9A-F]{2})/g,
         function toSolidBytes(match, p1) {
             return String.fromCharCode(parseInt(p1, 16));
@@ -75,7 +76,10 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
 
   const handleCopyLinkOnly = async () => {
     const link = getFullInviteLink();
-    if (!link) return;
+    if (!link) {
+        alert("يرجى إنشاء رمز دعوة أولاً!");
+        return;
+    }
 
     try {
         await navigator.clipboard.writeText(link);
@@ -96,7 +100,10 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
 
   const handleShareLink = async () => {
     const link = getFullInviteLink();
-    if (!link) return;
+    if (!link) {
+        alert("يرجى إنشاء رمز دعوة أولاً!");
+        return;
+    }
     
     const shareData = {
       title: `دعوة للانضمام إلى مجموعة ${group.name}`,
@@ -111,7 +118,6 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
             console.log("Native share cancelled");
         }
     } else {
-        // If share not supported, just copy link
         handleCopyLinkOnly();
     }
   };

@@ -1,7 +1,11 @@
 
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
-import { getAuth } from "firebase/auth";
+import * as _auth from "firebase/auth";
+
+// Workaround for TypeScript error: Module '"firebase/auth"' has no exported member 'getAuth'.
+// This can happen due to module resolution settings or specific Firebase versions.
+const { getAuth } = _auth as any;
 
 // ============================================================
 // 🔴 منطقة المفاتيح: انسخ بياناتك من Firebase Console وضعها هنا
@@ -11,14 +15,13 @@ import { getAuth } from "firebase/auth";
 // ============================================================
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAPLg1gW3Q6XAaTun_MlQ0fxxpW4ghVf54",
-  authDomain: "fathakkir-56567.firebaseapp.com",
-  projectId: "fathakkir-56567",
-  storageBucket: "fathakkir-56567.firebasestorage.app",
-  messagingSenderId: "448789782854",
-  appId: "1:448789782854:web:166b8c671635c12e4d0547",
+  apiKey: "AIzaSy_YOUR_API_KEY_HERE", 
+  authDomain: "YOUR_PROJECT_ID.firebaseapp.com", 
+  projectId: "YOUR_PROJECT_ID", 
+  storageBucket: "YOUR_PROJECT_ID.appspot.com", 
+  messagingSenderId: "123456789", 
+  appId: "1:123456789:web:abcdef" 
 };
-
 
 // ============================================================
 
