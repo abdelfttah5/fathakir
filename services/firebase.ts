@@ -5,313 +5,15 @@ import {
   query, where, getDocs, onSnapshot, orderBy, limit 
 } from "firebase/firestore";
 import { 
-  createUserWithEmailAndPassword, signInWithEmailAndPassword, 
-  signOut, updateProfile, sendPasswordResetEmail, signInAnonymously,
-  onAuthStateChanged
+  signInAnonymously,
+  onAuthStateChanged,
+  updateProfile,
+  signOut
 } from "firebase/auth";
 import { User, Group, ActivityLog, LocationPoint } from "../types";
 
 // ==========================================
-// MOCK IMPLEMENTATION (LocalStorage)
-// ==========================================
-
-const MOCK_STORAGE_KEYS = {
-  USER: 'fathakkir_session_user',
-  USERS_DB: 'f_users',
-  GROUPS_DB: 'f_groups',
-  MEMBERS_DB: 'f_members',
-  LOGS_DB: 'f_logs',
-  LOCATIONS_DB: 'f_locations'
-};
-
-// Mock Auth Observers
-let mockAuthListeners: ((user: any | null) => void)[] = [];
-
-const mockNotifyAuth = (user: any | null) => {
-  mockAuthListeners.forEach(cb => cb(user));
-};
-
-const getLocal = (key: string) => {
-  try {
-    const item = localStorage.getItem(key);
-    return item ? JSON.parse(item) : [];
-  } catch (e) {
-    console.error(`Error parsing local storage for key ${key}`, e);
-    return [];
-  }
-};
-
-const setLocal = (key: string, data: any) => {
-  try {
-    localStorage.setItem(key, JSON.stringify(data));
-  } catch (e) {
-    console.error(`Error saving to local storage for key ${key}`, e);
-  }
-};
-
-// Helper to Force Save to Local Storage (Fallback Mechanism)
-const forceSaveToLocalLog = (groupId: string, log: ActivityLog) => {
-    let logs = getLocal(MOCK_STORAGE_KEYS.LOGS_DB);
-    if (!Array.isArray(logs)) logs = [];
-    const logWithGroup = { ...log, groupId };
-    const exists = logs.findIndex((l: any) => l.id === log.id);
-    if (exists > -1) {
-        logs[exists] = logWithGroup;
-    } else {
-        logs.push(logWithGroup);
-    }
-    setLocal(MOCK_STORAGE_KEYS.LOGS_DB, logs);
-};
-
-// ==========================================
-// RADICAL FIX: SEEDING & FORCED JOIN
-// ==========================================
-
-// This function takes group data from the URL and FORCEFULLY creates it in the local browser
-// ensuring the user can "join" it even if it doesn't exist on a central server (Mock Mode).
-export const joinGroupViaSeeding = async (groupData: Group | any, user: User): Promise<Group> => {
-  // 1. Force Create/Update Group Locally
-  const groups = getLocal(MOCK_STORAGE_KEYS.GROUPS_DB);
-  const existingGroupIndex = groups.findIndex((g: Group) => g.id === groupData.id);
-  
-  if (existingGroupIndex > -1) {
-    // Group exists, update it just in case
-    groups[existingGroupIndex] = { ...groups[existingGroupIndex], ...groupData };
-  } else {
-    // Create new locally based on shared data
-    groups.push(groupData);
-  }
-  setLocal(MOCK_STORAGE_KEYS.GROUPS_DB, groups);
-
-  // 2. Force Add CURRENT USER as Member
-  const members = getLocal(MOCK_STORAGE_KEYS.MEMBERS_DB);
-  const membershipExists = members.some((m: any) => m.userId === user.id && m.groupId === groupData.id);
-  
-  if (!membershipExists) {
-    const newMember = {
-      id: user.id, // Auth ID
-      userId: user.id,
-      groupId: groupData.id,
-      name: user.name,
-      email: user.email || '',
-      isAdmin: false,
-      isGuest: !!user.isGuest,
-      joinedAt: Date.now()
-    };
-    members.push(newMember);
-  }
-
-  // 3. RADICAL FIX: Add the ADMIN/INVITER (passed in link) as a "Ghost Member"
-  // This simulates the group having other people without needing a real server query
-  if (groupData.adminName && groupData.adminId && groupData.adminId !== user.id) {
-     const adminExists = members.some((m: any) => m.userId === groupData.adminId && m.groupId === groupData.id);
-     if (!adminExists) {
-       const adminMember = {
-         id: groupData.adminId,
-         userId: groupData.adminId,
-         groupId: groupData.id,
-         name: groupData.adminName,
-         isAdmin: true,
-         isGuest: false,
-         joinedAt: Date.now() - 10000 // Joined before me
-       };
-       members.push(adminMember);
-     }
-  }
-
-  setLocal(MOCK_STORAGE_KEYS.MEMBERS_DB, members);
-
-  // 4. Return the group object
-  return groupData;
-};
-
-// ==========================================
-// AUTH SERVICES
-// ==========================================
-
-export const observeAuthState = (callback: (user: any | null) => void) => {
-  if (isMockMode) {
-    const stored = localStorage.getItem(MOCK_STORAGE_KEYS.USER);
-    if (stored) {
-      try { callback(JSON.parse(stored)); } catch { callback(null); }
-    } else {
-      callback(null);
-    }
-    mockAuthListeners.push(callback);
-    return () => { mockAuthListeners = mockAuthListeners.filter(l => l !== callback); };
-  } else {
-    // Real Firebase - Safety check for auth
-    if (!auth) {
-        callback(null);
-        return () => {};
-    }
-    return onAuthStateChanged(auth, callback);
-  }
-};
-
-export const registerUser = async (email: string, pass: string, name: string): Promise<User> => {
-  if (isMockMode || !auth) {
-    const id = 'user_' + Date.now();
-    const newUser: User = {
-      id, name, email, isAdmin: false,
-      privacySettings: { showDetails: false, shareLocation: false }
-    };
-    const users = getLocal(MOCK_STORAGE_KEYS.USERS_DB);
-    users.push(newUser);
-    setLocal(MOCK_STORAGE_KEYS.USERS_DB, users);
-    const sessionUser = { uid: id, displayName: name, email };
-    localStorage.setItem(MOCK_STORAGE_KEYS.USER, JSON.stringify(sessionUser));
-    mockNotifyAuth(sessionUser);
-    return newUser;
-  }
-
-  // Real Firebase
-  const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
-  const fbUser = userCredential.user;
-  if (fbUser) {
-    await updateProfile(fbUser, { displayName: name });
-    const newUser: User = {
-      id: fbUser.uid, name: name, email: email, isAdmin: false,
-      privacySettings: { showDetails: false, shareLocation: false }
-    };
-    await setDoc(doc(db, "users", fbUser.uid), newUser);
-    return newUser;
-  }
-  throw new Error("Registration failed");
-};
-
-export const loginUser = async (email: string, pass: string): Promise<User> => {
-  if (isMockMode || !auth) {
-    const users = getLocal(MOCK_STORAGE_KEYS.USERS_DB);
-    const found = users.find((u: User) => u.email === email);
-    if (found) {
-      const sessionUser = { uid: found.id, displayName: found.name, email };
-      localStorage.setItem(MOCK_STORAGE_KEYS.USER, JSON.stringify(sessionUser));
-      mockNotifyAuth(sessionUser);
-      return found;
-    }
-    throw new Error("auth/user-not-found");
-  }
-
-  // Real Firebase
-  const userCredential = await signInWithEmailAndPassword(auth, email, pass);
-  const fbUser = userCredential.user;
-  if (!fbUser) throw new Error("Login failed");
-  const userDoc = await getDoc(doc(db, "users", fbUser.uid));
-  if (userDoc.exists()) {
-    return userDoc.data() as User;
-  } else {
-    return {
-      id: fbUser.uid, name: fbUser.displayName || 'مستخدم', email: fbUser.email || '', isAdmin: false,
-      privacySettings: { showDetails: false, shareLocation: false }
-    };
-  }
-};
-
-export const loginGuestUser = async (customName?: string): Promise<User> => {
-  if (isMockMode || !auth) {
-    const id = 'guest_' + Date.now();
-    const name = customName || `زائر ${id.substring(6, 10)}`;
-    const newUser: User = {
-      id, name, email: '', isAdmin: false,
-      privacySettings: { showDetails: false, shareLocation: false }
-    };
-    const users = getLocal(MOCK_STORAGE_KEYS.USERS_DB);
-    users.push(newUser);
-    setLocal(MOCK_STORAGE_KEYS.USERS_DB, users);
-    const sessionUser = { uid: id, displayName: name, email: '' };
-    localStorage.setItem(MOCK_STORAGE_KEYS.USER, JSON.stringify(sessionUser));
-    mockNotifyAuth(sessionUser);
-    return newUser;
-  }
-
-  // Real Firebase
-  try {
-    const userCredential = await signInAnonymously(auth);
-    const fbUser = userCredential.user;
-    if (fbUser) {
-      const guestName = customName || `زائر ${fbUser.uid.substring(0, 4)}`;
-      try { await updateProfile(fbUser, { displayName: guestName }); } catch(e) {}
-      const newUser: User = {
-        id: fbUser.uid, name: guestName, email: '', isAdmin: false,
-        privacySettings: { showDetails: false, shareLocation: false }
-      };
-      const userDoc = await getDoc(doc(db, "users", fbUser.uid));
-      // Always update/set doc to ensure name is current
-      await setDoc(doc(db, "users", fbUser.uid), newUser, { merge: true });
-      return newUser;
-    }
-    throw new Error("Guest login failed");
-  } catch (error) {
-    console.error("Firebase Guest Login Error", error);
-    const id = 'guest_' + Date.now();
-    const name = customName || `زائر (غير متصل)`;
-    const newUser: User = {
-      id, name, email: '', isAdmin: false, isGuest: true,
-      privacySettings: { showDetails: false, shareLocation: false }
-    };
-    const sessionUser = { uid: id, displayName: name, email: '', isAnonymous: true };
-    localStorage.setItem(MOCK_STORAGE_KEYS.USER, JSON.stringify(sessionUser));
-    return newUser;
-  }
-};
-
-export const logoutUser = async () => {
-  if (isMockMode || !auth) {
-    localStorage.removeItem(MOCK_STORAGE_KEYS.USER);
-    mockNotifyAuth(null);
-    return;
-  }
-  try {
-    await signOut(auth);
-  } catch (e) {
-    console.error(e);
-    localStorage.removeItem(MOCK_STORAGE_KEYS.USER);
-  }
-};
-
-export const resetPassword = async (email: string) => {
-  if (isMockMode || !auth) return;
-  await sendPasswordResetEmail(auth, email);
-};
-
-export const getUserGroup = async (userId: string): Promise<Group | null> => {
-  if (isMockMode) {
-    const members = getLocal(MOCK_STORAGE_KEYS.MEMBERS_DB);
-    const membership = members.find((m: any) => m.userId === userId);
-    if (membership) {
-      const groups = getLocal(MOCK_STORAGE_KEYS.GROUPS_DB);
-      return groups.find((g: Group) => g.id === membership.groupId) || null;
-    }
-    return null;
-  }
-
-  try {
-    const q = query(collection(db, "group_members"), where("userId", "==", userId));
-    const querySnapshot = await getDocs(q);
-    if (!querySnapshot.empty) {
-      const memberData = querySnapshot.docs[0].data();
-      const groupId = memberData.groupId;
-      const groupDoc = await getDoc(doc(db, "groups", groupId));
-      if (groupDoc.exists()) {
-        return groupDoc.data() as Group;
-      }
-    }
-    return null;
-  } catch (e) {
-    console.warn("Error fetching group, falling back to local check", e);
-    const members = getLocal(MOCK_STORAGE_KEYS.MEMBERS_DB);
-    const membership = members.find((m: any) => m.userId === userId);
-    if (membership) {
-      const groups = getLocal(MOCK_STORAGE_KEYS.GROUPS_DB);
-      return groups.find((g: Group) => g.id === membership.groupId) || null;
-    }
-    return null;
-  }
-};
-
-// ==========================================
-// GROUP SERVICES
+// HELPERS
 // ==========================================
 
 const cleanUndefined = (obj: any) => {
@@ -322,220 +24,329 @@ const cleanUndefined = (obj: any) => {
   return newObj;
 };
 
-export const createGroupInFirestore = async (groupData: Group, creator: User) => {
-  // Always save locally first for resilience
-  const groups = getLocal(MOCK_STORAGE_KEYS.GROUPS_DB);
-  const groupWithAdmin = { ...groupData, adminId: creator.id };
-  groups.push(groupWithAdmin);
-  setLocal(MOCK_STORAGE_KEYS.GROUPS_DB, groups);
-  const members = getLocal(MOCK_STORAGE_KEYS.MEMBERS_DB);
-  const memberData = { ...creator, userId: creator.id, groupId: groupData.id, joinedAt: Date.now() };
-  members.push(memberData);
-  setLocal(MOCK_STORAGE_KEYS.MEMBERS_DB, members);
+// ==========================================
+// MOCK STORAGE (Fallback)
+// ==========================================
+const MOCK_STORAGE_KEYS = {
+  USER: 'fathakkir_session_user',
+  USERS_DB: 'f_users',
+  GROUPS_DB: 'f_groups',
+  MEMBERS_DB: 'f_members',
+  LOGS_DB: 'f_logs',
+  LOCATIONS_DB: 'f_locations'
+};
 
-  if (isMockMode) return true;
-
+const getLocal = (key: string) => {
   try {
-    await setDoc(doc(db, "groups", groupData.id), cleanUndefined(groupWithAdmin));
-    await setDoc(doc(db, "group_members", `${groupData.id}_${creator.id}`), cleanUndefined(memberData));
-    await updateDoc(doc(db, "users", creator.id), { isAdmin: true });
-    return true;
-  } catch (error) {
-    console.error("Error creating group in Firestore, but saved locally:", error);
-    return true;
+    const item = localStorage.getItem(key);
+    return item ? JSON.parse(item) : [];
+  } catch (e) { return []; }
+};
+
+const setLocal = (key: string, data: any) => {
+  localStorage.setItem(key, JSON.stringify(data));
+};
+
+// ==========================================
+// CORE SERVICES
+// ==========================================
+
+// 1. AUTH OBSERVATION
+export const observeAuthState = (callback: (user: any | null) => void) => {
+  // If we have a real auth instance, use it
+  if (auth) {
+    return onAuthStateChanged(auth, (user) => {
+      if (user) {
+        callback(user);
+      } else {
+        // Fallback: check local storage if firebase auth fails or isn't used
+        const stored = localStorage.getItem(MOCK_STORAGE_KEYS.USER);
+        callback(stored ? JSON.parse(stored) : null);
+      }
+    });
+  } else {
+    // Mock Mode Only
+    const stored = localStorage.getItem(MOCK_STORAGE_KEYS.USER);
+    callback(stored ? JSON.parse(stored) : null);
+    return () => {};
   }
 };
 
-export const updateGroupCode = async (groupId: string, newCode: string) => {
-    // 1. Mock Update
-    const groups = getLocal(MOCK_STORAGE_KEYS.GROUPS_DB);
-    const idx = groups.findIndex((g: Group) => g.id === groupId);
-    if (idx > -1) {
-        groups[idx].inviteCode = newCode;
-        setLocal(MOCK_STORAGE_KEYS.GROUPS_DB, groups);
-    }
-
-    if (isMockMode) return;
-
+// 2. GUEST LOGIN (Simplified for MVP)
+export const loginGuestUser = async (customName: string): Promise<User> => {
+  const id = 'guest_' + Date.now() + Math.floor(Math.random() * 1000);
+  
+  // Try Real Firebase Anonymous Login
+  if (auth) {
     try {
-        await updateDoc(doc(db, "groups", groupId), { inviteCode: newCode });
+      const cred = await signInAnonymously(auth);
+      const fbUser = cred.user;
+      if (fbUser) {
+        await updateProfile(fbUser, { displayName: customName });
+        // Save user to Firestore 'users' collection to establish record
+        const newUser: User = {
+          id: fbUser.uid, 
+          name: customName, 
+          isAdmin: false,
+          isGuest: true,
+          privacySettings: { showDetails: false, shareLocation: false }
+        };
+        await setDoc(doc(db, "users", fbUser.uid), newUser, { merge: true });
+        return newUser;
+      }
     } catch (e) {
-        console.error("Failed to update group code in Firestore", e);
+      console.warn("Firebase Anonymous Auth failed, using local mock", e);
     }
+  }
+
+  // Fallback / Mock User
+  const newUser: User = {
+    id, name: customName, isAdmin: false, isGuest: true,
+    privacySettings: { showDetails: false, shareLocation: false }
+  };
+  localStorage.setItem(MOCK_STORAGE_KEYS.USER, JSON.stringify({ uid: id, displayName: customName, isAnonymous: true }));
+  return newUser;
 };
 
-// NOTE: This function is still used for manual code entry
+// 3. CREATE GROUP
+export const createGroupInFirestore = async (groupData: Group, creator: User) => {
+  // Save Locally (Always safe backup)
+  const localGroups = getLocal(MOCK_STORAGE_KEYS.GROUPS_DB);
+  localGroups.push({ ...groupData, adminId: creator.id });
+  setLocal(MOCK_STORAGE_KEYS.GROUPS_DB, localGroups);
+  
+  // Mock Membership
+  const localMembers = getLocal(MOCK_STORAGE_KEYS.MEMBERS_DB);
+  localMembers.push({ ...creator, userId: creator.id, groupId: groupData.id, isAdmin: true, joinedAt: Date.now() });
+  setLocal(MOCK_STORAGE_KEYS.MEMBERS_DB, localMembers);
+
+  // Try Real Firestore
+  if (db && !isMockMode) {
+    try {
+      await setDoc(doc(db, "groups", groupData.id), cleanUndefined({ ...groupData, adminId: creator.id }));
+      // Add creator as member
+      await setDoc(doc(db, "group_members", `${groupData.id}_${creator.id}`), {
+        userId: creator.id,
+        groupId: groupData.id,
+        name: creator.name,
+        isAdmin: true,
+        joinedAt: Date.now()
+      });
+      return true;
+    } catch (e) {
+      console.error("Firestore Create Group Failed:", e);
+      throw new Error("تعذر إنشاء المجموعة على السيرفر. تم الإنشاء محلياً.");
+    }
+  }
+  return true;
+};
+
+// 4. JOIN GROUP (FIXED LOGIC)
 export const joinGroupInFirestore = async (inviteCode: string, user: User): Promise<Group | null> => {
-  const localGroups = getLocal(MOCK_STORAGE_KEYS.GROUPS_DB) || [];
-  const localGroup = localGroups.find((g: Group) => g.inviteCode === inviteCode.trim());
-  
-  if (localGroup) {
-      await joinGroupViaSeeding(localGroup, user);
-      return localGroup;
-  }
+  const code = inviteCode.trim().toUpperCase();
 
-  // If in Mock Mode, return failure if not found locally
-  if (isMockMode) {
-      throw new Error("لم يتم العثور على المجموعة برمز الدعوة هذا.");
-  }
+  // A. Try Real Firestore First
+  if (db && !isMockMode) {
+    try {
+      const q = query(collection(db, "groups"), where("inviteCode", "==", code));
+      const snapshot = await getDocs(q);
 
-  // Real Firestore Logic
-  try {
-    const q = query(collection(db, "groups"), where("inviteCode", "==", inviteCode.trim()));
-    const querySnapshot = await getDocs(q);
-    
-    if (querySnapshot.empty) {
-      throw new Error("رمز الدعوة غير صحيح أو المجموعة غير موجودة");
+      if (!snapshot.empty) {
+        const groupDoc = snapshot.docs[0];
+        const groupData = groupDoc.data() as Group;
+        
+        // Add Member to Subcollection/Collection
+        await setDoc(doc(db, "group_members", `${groupData.id}_${user.id}`), {
+          userId: user.id,
+          groupId: groupData.id,
+          name: user.name,
+          isAdmin: false,
+          joinedAt: Date.now()
+        });
+
+        return groupData;
+      }
+    } catch (e) {
+      console.error("Firestore Join Failed:", e);
+      // Don't return null yet, try local fallback
     }
-    
-    const groupData = querySnapshot.docs[0].data() as Group;
-    await joinGroupViaSeeding(groupData, user); // Reuse the logic to add member
-    return groupData;
-  } catch (error: any) {
-    console.error("Error joining group in Firestore:", error);
-    throw new Error("تعذر الانضمام للمجموعة. تأكد من صحة الرمز.");
   }
-};
 
-export const leaveGroupInFirestore = async (userId: string, groupId: string) => {
-  // 1. Remove from Mock DB
-  const members = getLocal(MOCK_STORAGE_KEYS.MEMBERS_DB);
-  const newMembers = members.filter((m: any) => !(m.userId === userId && m.groupId === groupId));
-  setLocal(MOCK_STORAGE_KEYS.MEMBERS_DB, newMembers);
+  // B. Fallback to Local Storage
+  const localGroups = getLocal(MOCK_STORAGE_KEYS.GROUPS_DB);
+  const found = localGroups.find((g: Group) => g.inviteCode === code);
   
-  if (isMockMode) return true;
-
-  // 2. Remove from Real Firestore
-  try {
-    await deleteDoc(doc(db, "group_members", `${groupId}_${userId}`));
-    return true;
-  } catch (e) {
-    console.error("Error leaving group in Firestore:", e);
-    return false;
+  if (found) {
+    await joinGroupViaSeeding(found, user); // Update local membership
+    return found;
   }
+
+  return null; // Not found anywhere
 };
 
-// ==========================================
-// REAL-TIME LISTENERS
-// ==========================================
+// 5. GET USER GROUP
+export const getUserGroup = async (userId: string): Promise<Group | null> => {
+  // Try Firestore
+  if (db && !isMockMode) {
+    try {
+      const q = query(collection(db, "group_members"), where("userId", "==", userId));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        const groupId = snap.docs[0].data().groupId;
+        const gDoc = await getDoc(doc(db, "groups", groupId));
+        if (gDoc.exists()) return gDoc.data() as Group;
+      }
+    } catch (e) { console.warn("Firestore get group failed", e); }
+  }
 
+  // Fallback Local
+  const members = getLocal(MOCK_STORAGE_KEYS.MEMBERS_DB);
+  const membership = members.find((m: any) => m.userId === userId);
+  if (membership) {
+    const groups = getLocal(MOCK_STORAGE_KEYS.GROUPS_DB);
+    return groups.find((g: Group) => g.id === membership.groupId) || null;
+  }
+  return null;
+};
+
+// 6. REALTIME MEMBERS LISTENER
 export const subscribeToMembers = (groupId: string, callback: (members: User[]) => void) => {
-  const fetchLocal = () => {
-      const allMembers = getLocal(MOCK_STORAGE_KEYS.MEMBERS_DB);
-      const groupMembers = allMembers.filter((m: any) => m.groupId === groupId);
-      if (groupMembers.length > 0) callback(groupMembers);
-  };
+  let unsub = () => {};
 
-  if (isMockMode) {
-    fetchLocal();
-    const interval = setInterval(fetchLocal, 3000);
-    return () => clearInterval(interval);
+  if (db && !isMockMode) {
+    try {
+      const q = query(collection(db, "group_members"), where("groupId", "==", groupId));
+      unsub = onSnapshot(q, (snap) => {
+        const list: User[] = [];
+        snap.forEach(d => list.push(d.data() as User));
+        callback(list);
+      });
+    } catch (e) { console.error(e); }
+  } else {
+    // Local Polling
+    const interval = setInterval(() => {
+      const all = getLocal(MOCK_STORAGE_KEYS.MEMBERS_DB);
+      const filtered = all.filter((m: any) => m.groupId === groupId);
+      callback(filtered);
+    }, 2000);
+    unsub = () => clearInterval(interval);
   }
-
-  try {
-    const q = query(collection(db, "group_members"), where("groupId", "==", groupId));
-    return onSnapshot(q, (snapshot) => {
-      const members: User[] = [];
-      snapshot.forEach((doc) => members.push(doc.data() as User));
-      callback(members);
-    }, (error) => {
-      fetchLocal();
-    });
-  } catch (e) {
-    fetchLocal();
-    return () => {};
-  }
+  return unsub;
 };
 
-export const subscribeToLogs = (groupId: string, callback: (logs: ActivityLog[]) => void) => {
-  const fetchLocal = () => {
-      let allLogs = getLocal(MOCK_STORAGE_KEYS.LOGS_DB);
-      if (!Array.isArray(allLogs)) allLogs = [];
-      
-      const groupLogs = allLogs
-        .filter((l: any) => l.groupId === groupId)
-        .sort((a: ActivityLog, b: ActivityLog) => b.timestamp - a.timestamp)
-        .slice(0, 300);
-      
-      callback(groupLogs);
-  };
+// 7. SEEDING (FOR URL JOINS)
+export const joinGroupViaSeeding = async (groupData: Group, user: User): Promise<Group> => {
+  // Local Save
+  const groups = getLocal(MOCK_STORAGE_KEYS.GROUPS_DB);
+  if (!groups.find((g: Group) => g.id === groupData.id)) {
+    groups.push(groupData);
+    setLocal(MOCK_STORAGE_KEYS.GROUPS_DB, groups);
+  }
+  
+  const members = getLocal(MOCK_STORAGE_KEYS.MEMBERS_DB);
+  if (!members.find((m: any) => m.userId === user.id && m.groupId === groupData.id)) {
+    members.push({ ...user, userId: user.id, groupId: groupData.id, joinedAt: Date.now() });
+    setLocal(MOCK_STORAGE_KEYS.MEMBERS_DB, members);
+  }
 
-  if (isMockMode) {
-    fetchLocal();
-    const interval = setInterval(fetchLocal, 1000);
+  // Attempt Remote Sync (If keys exist)
+  if (db && !isMockMode) {
+     try {
+       await setDoc(doc(db, "groups", groupData.id), cleanUndefined(groupData), { merge: true });
+       await setDoc(doc(db, "group_members", `${groupData.id}_${user.id}`), {
+          userId: user.id,
+          groupId: groupData.id,
+          name: user.name,
+          isAdmin: false,
+          joinedAt: Date.now()
+       });
+     } catch(e) {}
+  }
+
+  return groupData;
+};
+
+// 8. LOGOUT
+export const logoutUser = async () => {
+  localStorage.removeItem(MOCK_STORAGE_KEYS.USER);
+  if (auth) await signOut(auth);
+};
+
+// --- LOGGING & LOCATIONS ---
+
+const forceSaveToLocalLog = (groupId: string, log: ActivityLog) => {
+  const logs = getLocal(MOCK_STORAGE_KEYS.LOGS_DB);
+  logs.push({ ...log, groupId });
+  setLocal(MOCK_STORAGE_KEYS.LOGS_DB, logs);
+};
+
+export const subscribeToLogs = (groupId: string, cb: any) => { 
+    if(db && !isMockMode) {
+        const q = query(collection(db, "activity_logs"), where("groupId", "==", groupId), orderBy("timestamp", "desc"), limit(50));
+        return onSnapshot(q, (s) => {
+            const logs: any[] = [];
+            s.forEach(d => logs.push(d.data()));
+            cb(logs);
+        });
+    }
+    // Local fallback
+    const interval = setInterval(() => {
+        const all = getLocal(MOCK_STORAGE_KEYS.LOGS_DB);
+        cb(all.filter((l:any) => l.groupId === groupId).sort((a:any,b:any) => b.timestamp - a.timestamp));
+    }, 2000);
     return () => clearInterval(interval);
-  }
+};
 
-  try {
-    const q = query(
-      collection(db, "activity_logs"), 
-      where("groupId", "==", groupId), 
-      orderBy("timestamp", "desc"), 
-      limit(300)
-    );
-    return onSnapshot(q, (snapshot) => {
-      const logs: ActivityLog[] = [];
-      snapshot.forEach((doc) => logs.push(doc.data() as ActivityLog));
-      callback(logs);
-    }, (error) => {
-      fetchLocal();
-    });
-  } catch (e) {
-    fetchLocal();
-    return () => {};
-  }
+export const subscribeToLocations = (groupId: string, cb: any) => {
+    if(db && !isMockMode) {
+        const q = query(collection(db, "locations"), where("groupId", "==", groupId));
+        return onSnapshot(q, (s) => {
+            const locs: any[] = [];
+            s.forEach(d => locs.push(d.data()));
+            cb(locs);
+        });
+    }
+    const interval = setInterval(() => {
+        const all = getLocal(MOCK_STORAGE_KEYS.LOCATIONS_DB);
+        cb(all.filter((l:any) => l.groupId === groupId));
+    }, 3000);
+    return () => clearInterval(interval);
 };
 
 export const logActivityToFirestore = async (groupId: string, log: ActivityLog) => {
-  forceSaveToLocalLog(groupId, log);
-
-  if (isMockMode) return;
-
-  try {
-    const logWithGroup = { ...log, groupId };
-    await setDoc(doc(db, "activity_logs", log.id), cleanUndefined(logWithGroup));
-  } catch (e) {
-    console.error("Failed to write log to Firestore. Data saved locally only.", e);
-  }
+    forceSaveToLocalLog(groupId, log);
+    if(db && !isMockMode) {
+        await setDoc(doc(db, "activity_logs", log.id), { ...log, groupId });
+    }
 };
 
 export const updateLocationInFirestore = async (groupId: string, point: LocationPoint) => {
-  const locs = getLocal(MOCK_STORAGE_KEYS.LOCATIONS_DB);
-  const filtered = locs.filter((p: any) => p.userId !== point.userId);
-  filtered.push({ ...point, groupId });
-  setLocal(MOCK_STORAGE_KEYS.LOCATIONS_DB, filtered);
+    // Local
+    const locations = getLocal(MOCK_STORAGE_KEYS.LOCATIONS_DB);
+    const filtered = locations.filter((l: any) => !(l.userId === point.userId && l.groupId === groupId));
+    filtered.push({ ...point, groupId });
+    setLocal(MOCK_STORAGE_KEYS.LOCATIONS_DB, filtered);
 
-  if (isMockMode) return;
-
-  try {
-    await setDoc(doc(db, "locations", point.userId), { ...point, groupId });
-  } catch (e) {
-    console.warn("Location update failed remote", e);
-  }
+    if(db && !isMockMode) {
+        await setDoc(doc(db, "locations", `${groupId}_${point.userId}`), {
+            ...point,
+            groupId
+        });
+    }
 };
 
-export const subscribeToLocations = (groupId: string, callback: (points: LocationPoint[]) => void) => {
-  const fetchLocal = () => {
-      const allLocs = getLocal(MOCK_STORAGE_KEYS.LOCATIONS_DB);
-      const groupLocs = allLocs.filter((l: any) => l.groupId === groupId);
-      callback(groupLocs);
-  };
+export const leaveGroupInFirestore = async (uid: string, gid: string) => {
+    // Local removal
+    const mems = getLocal(MOCK_STORAGE_KEYS.MEMBERS_DB).filter((m:any) => !(m.userId === uid && m.groupId === gid));
+    setLocal(MOCK_STORAGE_KEYS.MEMBERS_DB, mems);
+    if(db && !isMockMode) {
+        await deleteDoc(doc(db, "group_members", `${gid}_${uid}`));
+    }
+};
 
-  if (isMockMode) {
-    fetchLocal();
-    const interval = setInterval(fetchLocal, 3000);
-    return () => clearInterval(interval);
-  }
-
-  try {
-    const q = query(collection(db, "locations"), where("groupId", "==", groupId));
-    return onSnapshot(q, (snapshot) => {
-      const points: LocationPoint[] = [];
-      snapshot.forEach((doc) => points.push(doc.data() as LocationPoint));
-      callback(points);
-    }, () => fetchLocal());
-  } catch(e) {
-    fetchLocal();
-    return () => {};
-  }
+export const updateGroupCode = async (gid: string, code: string) => {
+    const groups = getLocal(MOCK_STORAGE_KEYS.GROUPS_DB);
+    const g = groups.find((x:any) => x.id === gid);
+    if(g) { g.inviteCode = code; setLocal(MOCK_STORAGE_KEYS.GROUPS_DB, groups); }
+    if(db && !isMockMode) await updateDoc(doc(db, "groups", gid), { inviteCode: code });
 };

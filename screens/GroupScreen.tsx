@@ -80,32 +80,30 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
       url: directLink,
     };
 
-    // 1. Try Native Share (Mobile)
-    if (navigator.share) {
-      try {
-        await navigator.share(shareData);
-        return; // Success
-      } catch (err) {
-        // User cancelled or error, fall back to copy
-        console.log("Share cancelled", err);
-      }
-    }
-
-    // 2. Fallback to Clipboard (Desktop/Laptop)
+    // STRATEGY: Try Native -> Try Clipboard -> Fallback Prompt
     try {
-      await navigator.clipboard.writeText(directLink);
-      alert('✅ تم نسخ رابط الدعوة!\nيمكنك لصقه وإرساله للعائلة.');
+        if (navigator.share) {
+            await navigator.share(shareData);
+        } else {
+            throw new Error("Native share not supported");
+        }
     } catch (err) {
-      // 3. Last Resort: Prompt
-      prompt("انسخ الرابط يدوياً:", directLink);
+        // Fallback to Clipboard
+        try {
+            await navigator.clipboard.writeText(directLink);
+            alert("تم نسخ رابط الدعوة إلى الحافظة! 📋\nيمكنك الآن لصقه وإرساله.");
+        } catch (clipErr) {
+            // Ultimate Fallback: Manual Copy
+            prompt("انسخ الرابط التالي وأرسله لعائلتك:", directLink);
+        }
     }
   };
 
   const handleManualRefreshMembers = () => {
      if (group.id) {
-       // Re-trigger subscription or simple alert for Mock mode limitation
-       alert("جاري تحديث القائمة...");
-       // In a real app, the subscription updates auto. In mock, we can't fetch remote data.
+       // In a real app with Firestore, this listener is auto-active.
+       // This button is mostly for reassurance or force-polling in mock mode.
+       alert("جاري تحديث القائمة... تأكد من اتصال الإنترنت.");
      }
   };
 
