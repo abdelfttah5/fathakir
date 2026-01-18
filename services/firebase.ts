@@ -53,37 +53,32 @@ const setLocal = (key: string, data: any) => {
 
 // 1. AUTH OBSERVATION
 export const observeAuthState = (callback: (user: any | null) => void) => {
-  // If we have a real auth instance, use it
   if (auth) {
     return onAuthStateChanged(auth, (user) => {
       if (user) {
         callback(user);
       } else {
-        // Fallback: check local storage if firebase auth fails or isn't used
         const stored = localStorage.getItem(MOCK_STORAGE_KEYS.USER);
         callback(stored ? JSON.parse(stored) : null);
       }
     });
   } else {
-    // Mock Mode Only
     const stored = localStorage.getItem(MOCK_STORAGE_KEYS.USER);
     callback(stored ? JSON.parse(stored) : null);
     return () => {};
   }
 };
 
-// 2. GUEST LOGIN (Simplified for MVP)
+// 2. GUEST LOGIN
 export const loginGuestUser = async (customName: string): Promise<User> => {
   const id = 'guest_' + Date.now() + Math.floor(Math.random() * 1000);
   
-  // Try Real Firebase Anonymous Login
   if (auth) {
     try {
       const cred = await signInAnonymously(auth);
       const fbUser = cred.user;
       if (fbUser) {
         await updateProfile(fbUser, { displayName: customName });
-        // Save user to Firestore 'users' collection to establish record
         const newUser: User = {
           id: fbUser.uid, 
           name: customName, 
@@ -99,7 +94,6 @@ export const loginGuestUser = async (customName: string): Promise<User> => {
     }
   }
 
-  // Fallback / Mock User
   const newUser: User = {
     id, name: customName, isAdmin: false, isGuest: true,
     privacySettings: { showDetails: false, shareLocation: false }
@@ -110,21 +104,17 @@ export const loginGuestUser = async (customName: string): Promise<User> => {
 
 // 3. CREATE GROUP
 export const createGroupInFirestore = async (groupData: Group, creator: User) => {
-  // Save Locally (Always safe backup)
   const localGroups = getLocal(MOCK_STORAGE_KEYS.GROUPS_DB);
   localGroups.push({ ...groupData, adminId: creator.id });
   setLocal(MOCK_STORAGE_KEYS.GROUPS_DB, localGroups);
   
-  // Mock Membership
   const localMembers = getLocal(MOCK_STORAGE_KEYS.MEMBERS_DB);
   localMembers.push({ ...creator, userId: creator.id, groupId: groupData.id, isAdmin: true, joinedAt: Date.now() });
   setLocal(MOCK_STORAGE_KEYS.MEMBERS_DB, localMembers);
 
-  // Try Real Firestore
   if (db && !isMockMode) {
     try {
       await setDoc(doc(db, "groups", groupData.id), cleanUndefined({ ...groupData, adminId: creator.id }));
-      // Add creator as member
       await setDoc(doc(db, "group_members", `${groupData.id}_${creator.id}`), {
         userId: creator.id,
         groupId: groupData.id,
@@ -141,11 +131,10 @@ export const createGroupInFirestore = async (groupData: Group, creator: User) =>
   return true;
 };
 
-// 4. JOIN GROUP (FIXED LOGIC)
+// 4. JOIN GROUP
 export const joinGroupInFirestore = async (inviteCode: string, user: User): Promise<Group | null> => {
   const code = inviteCode.trim().toUpperCase();
 
-  // A. Try Real Firestore First
   if (db && !isMockMode) {
     try {
       const q = query(collection(db, "groups"), where("inviteCode", "==", code));
@@ -155,7 +144,6 @@ export const joinGroupInFirestore = async (inviteCode: string, user: User): Prom
         const groupDoc = snapshot.docs[0];
         const groupData = groupDoc.data() as Group;
         
-        // Add Member to Subcollection/Collection
         await setDoc(doc(db, "group_members", `${groupData.id}_${user.id}`), {
           userId: user.id,
           groupId: groupData.id,
@@ -168,25 +156,22 @@ export const joinGroupInFirestore = async (inviteCode: string, user: User): Prom
       }
     } catch (e) {
       console.error("Firestore Join Failed:", e);
-      // Don't return null yet, try local fallback
     }
   }
 
-  // B. Fallback to Local Storage
   const localGroups = getLocal(MOCK_STORAGE_KEYS.GROUPS_DB);
   const found = localGroups.find((g: Group) => g.inviteCode === code);
   
   if (found) {
-    await joinGroupViaSeeding(found, user); // Update local membership
+    await joinGroupViaSeeding(found, user);
     return found;
   }
 
-  return null; // Not found anywhere
+  return null;
 };
 
 // 5. GET USER GROUP
 export const getUserGroup = async (userId: string): Promise<Group | null> => {
-  // Try Firestore
   if (db && !isMockMode) {
     try {
       const q = query(collection(db, "group_members"), where("userId", "==", userId));
@@ -199,7 +184,6 @@ export const getUserGroup = async (userId: string): Promise<Group | null> => {
     } catch (e) { console.warn("Firestore get group failed", e); }
   }
 
-  // Fallback Local
   const members = getLocal(MOCK_STORAGE_KEYS.MEMBERS_DB);
   const membership = members.find((m: any) => m.userId === userId);
   if (membership) {
@@ -223,7 +207,6 @@ export const subscribeToMembers = (groupId: string, callback: (members: User[]) 
       });
     } catch (e) { console.error(e); }
   } else {
-    // Local Polling
     const interval = setInterval(() => {
       const all = getLocal(MOCK_STORAGE_KEYS.MEMBERS_DB);
       const filtered = all.filter((m: any) => m.groupId === groupId);
@@ -234,9 +217,8 @@ export const subscribeToMembers = (groupId: string, callback: (members: User[]) 
   return unsub;
 };
 
-// 7. SEEDING (FOR URL JOINS)
+// 7. SEEDING
 export const joinGroupViaSeeding = async (groupData: Group, user: User): Promise<Group> => {
-  // Local Save
   const groups = getLocal(MOCK_STORAGE_KEYS.GROUPS_DB);
   if (!groups.find((g: Group) => g.id === groupData.id)) {
     groups.push(groupData);
@@ -249,7 +231,6 @@ export const joinGroupViaSeeding = async (groupData: Group, user: User): Promise
     setLocal(MOCK_STORAGE_KEYS.MEMBERS_DB, members);
   }
 
-  // Attempt Remote Sync (If keys exist)
   if (db && !isMockMode) {
      try {
        await setDoc(doc(db, "groups", groupData.id), cleanUndefined(groupData), { merge: true });
@@ -266,7 +247,6 @@ export const joinGroupViaSeeding = async (groupData: Group, user: User): Promise
   return groupData;
 };
 
-// 8. LOGOUT
 export const logoutUser = async () => {
   localStorage.removeItem(MOCK_STORAGE_KEYS.USER);
   if (auth) await signOut(auth);
@@ -280,21 +260,54 @@ const forceSaveToLocalLog = (groupId: string, log: ActivityLog) => {
   setLocal(MOCK_STORAGE_KEYS.LOGS_DB, logs);
 };
 
-export const subscribeToLogs = (groupId: string, cb: any) => { 
+// UPDATED: Hybrid Listener (Merges Remote and Local)
+export const subscribeToLogs = (groupId: string, cb: (logs: ActivityLog[]) => void) => { 
+    let remoteLogs: ActivityLog[] = [];
+    let localLogs: ActivityLog[] = [];
+    let unsubRemote = () => {};
+
+    // Helper to merge and sort
+    const mergeAndEmit = () => {
+        const combined = [...remoteLogs];
+        // Add local logs that are not in remote (by ID)
+        localLogs.forEach(l => {
+            if (!combined.find(r => r.id === l.id)) {
+                combined.push(l);
+            }
+        });
+        // Sort DESC
+        combined.sort((a, b) => b.timestamp - a.timestamp);
+        cb(combined);
+    };
+
+    // 1. Setup Remote Listener
     if(db && !isMockMode) {
         const q = query(collection(db, "activity_logs"), where("groupId", "==", groupId), orderBy("timestamp", "desc"), limit(50));
-        return onSnapshot(q, (s) => {
-            const logs: any[] = [];
-            s.forEach(d => logs.push(d.data()));
-            cb(logs);
+        unsubRemote = onSnapshot(q, (s) => {
+            remoteLogs = [];
+            s.forEach(d => remoteLogs.push(d.data() as ActivityLog));
+            mergeAndEmit();
+        }, (error) => {
+            console.warn("Firestore subscription failed, relying on local:", error);
         });
     }
-    // Local fallback
+
+    // 2. Setup Local Polling (Always active to catch local-only saves)
     const interval = setInterval(() => {
         const all = getLocal(MOCK_STORAGE_KEYS.LOGS_DB);
-        cb(all.filter((l:any) => l.groupId === groupId).sort((a:any,b:any) => b.timestamp - a.timestamp));
-    }, 2000);
-    return () => clearInterval(interval);
+        localLogs = all.filter((l:any) => l.groupId === groupId);
+        mergeAndEmit();
+    }, 2000); // Check every 2 seconds
+
+    // Initial Local Load
+    const all = getLocal(MOCK_STORAGE_KEYS.LOGS_DB);
+    localLogs = all.filter((l:any) => l.groupId === groupId);
+    mergeAndEmit();
+
+    return () => {
+        unsubRemote();
+        clearInterval(interval);
+    };
 };
 
 export const subscribeToLocations = (groupId: string, cb: any) => {
@@ -314,29 +327,36 @@ export const subscribeToLocations = (groupId: string, cb: any) => {
 };
 
 export const logActivityToFirestore = async (groupId: string, log: ActivityLog) => {
+    // 1. Always save locally first (Fail-safe)
     forceSaveToLocalLog(groupId, log);
+
+    // 2. Try remote save if configured
     if(db && !isMockMode) {
-        await setDoc(doc(db, "activity_logs", log.id), { ...log, groupId });
+        try {
+            await setDoc(doc(db, "activity_logs", log.id), { ...log, groupId });
+        } catch (e) {
+            console.warn("Firestore save failed (saved locally only):", e);
+        }
     }
 };
 
 export const updateLocationInFirestore = async (groupId: string, point: LocationPoint) => {
-    // Local
     const locations = getLocal(MOCK_STORAGE_KEYS.LOCATIONS_DB);
     const filtered = locations.filter((l: any) => !(l.userId === point.userId && l.groupId === groupId));
     filtered.push({ ...point, groupId });
     setLocal(MOCK_STORAGE_KEYS.LOCATIONS_DB, filtered);
 
     if(db && !isMockMode) {
-        await setDoc(doc(db, "locations", `${groupId}_${point.userId}`), {
-            ...point,
-            groupId
-        });
+        try {
+            await setDoc(doc(db, "locations", `${groupId}_${point.userId}`), {
+                ...point,
+                groupId
+            });
+        } catch(e) {}
     }
 };
 
 export const leaveGroupInFirestore = async (uid: string, gid: string) => {
-    // Local removal
     const mems = getLocal(MOCK_STORAGE_KEYS.MEMBERS_DB).filter((m:any) => !(m.userId === uid && m.groupId === gid));
     setLocal(MOCK_STORAGE_KEYS.MEMBERS_DB, mems);
     if(db && !isMockMode) {

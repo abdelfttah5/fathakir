@@ -20,7 +20,7 @@ interface GroupScreenProps {
 const GroupScreen: React.FC<GroupScreenProps> = ({ 
   user, group, members, logs, locationPoints, googleAccessToken, setGoogleAccessToken, onLeaveGroup, isDarkMode = false
 }) => {
-  // SAFETY CHECK: If critical data is missing, render a fallback instead of crashing
+  // SAFETY CHECK
   if (!user || !group) {
     return (
       <div className="p-8 text-center opacity-50">
@@ -35,7 +35,6 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
   const [isScheduling, setIsScheduling] = useState(false);
   const [localMembers, setLocalMembers] = useState<User[]>(members);
 
-  // Sync props to local state
   React.useEffect(() => {
     setLocalMembers(members);
   }, [members]);
@@ -48,69 +47,82 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
   const handleGenerateInvite = async () => {
     if (!isAdmin) return;
     const newCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-    
-    // Save to State and DB
     setInviteCode(newCode);
     if (group.id) {
         await updateGroupCode(group.id, newCode);
     }
-    
     alert(`تم إنشاء وحفظ رمز الدعوة: ${newCode}`);
   };
 
-  const handleShareLink = async () => {
-    if (!inviteCode) return;
+  const getFullInviteLink = () => {
+    if (!inviteCode) return "";
     
-    // Encode group data + ADMIN NAME
-    const groupPayload = btoa(JSON.stringify({ 
+    const rawData = JSON.stringify({ 
       id: group.id, 
       name: group.name, 
       inviteCode: inviteCode,
       adminName: user.name, 
       adminId: user.id      
+    });
+
+    const groupPayload = btoa(encodeURIComponent(rawData).replace(/%([0-9A-F]{2})/g,
+        function toSolidBytes(match, p1) {
+            return String.fromCharCode(parseInt(p1, 16));
     }));
 
-    // Generate Direct Link
-    const directLink = `${window.location.origin}${window.location.pathname}?inviteCode=${inviteCode}&d=${groupPayload}`;
+    return `${window.location.origin}${window.location.pathname}?inviteCode=${inviteCode}&d=${groupPayload}`;
+  };
+
+  const handleCopyLinkOnly = async () => {
+    const link = getFullInviteLink();
+    if (!link) return;
+
+    try {
+        await navigator.clipboard.writeText(link);
+        alert("تم نسخ الرابط الكامل للحافظة 📋");
+    } catch (err) {
+        // Fallback
+        const textArea = document.createElement("textarea");
+        textArea.value = link;
+        textArea.style.position = "fixed";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        alert("تم نسخ الرابط الكامل للحافظة 📋");
+    }
+  };
+
+  const handleShareLink = async () => {
+    const link = getFullInviteLink();
+    if (!link) return;
     
-    // Share Data Object
     const shareData = {
       title: `دعوة للانضمام إلى مجموعة ${group.name}`,
       text: `انضم لمجموعتي "${group.name}" في تطبيق فذكر باستخدام الرمز: ${inviteCode}`,
-      url: directLink,
+      url: link,
     };
 
-    // STRATEGY: Try Native -> Try Clipboard -> Fallback Prompt
-    try {
-        if (navigator.share) {
-            await navigator.share(shareData);
-        } else {
-            throw new Error("Native share not supported");
-        }
-    } catch (err) {
-        // Fallback to Clipboard
+    if (navigator.share) {
         try {
-            await navigator.clipboard.writeText(directLink);
-            alert("تم نسخ رابط الدعوة إلى الحافظة! 📋\nيمكنك الآن لصقه وإرساله.");
-        } catch (clipErr) {
-            // Ultimate Fallback: Manual Copy
-            prompt("انسخ الرابط التالي وأرسله لعائلتك:", directLink);
+            await navigator.share(shareData);
+        } catch (err) {
+            console.log("Native share cancelled");
         }
+    } else {
+        // If share not supported, just copy link
+        handleCopyLinkOnly();
     }
   };
 
   const handleManualRefreshMembers = () => {
-     if (group.id) {
-       // In a real app with Firestore, this listener is auto-active.
-       // This button is mostly for reassurance or force-polling in mock mode.
-       alert("جاري تحديث القائمة... تأكد من اتصال الإنترنت.");
-     }
+     if (group.id) alert("جاري تحديث القائمة... تأكد من اتصال الإنترنت.");
   };
 
   const handleCreateMeet = async (type: 'NOW' | 'SCHEDULED') => {
     setIsScheduling(true);
     const startTime = new Date().toISOString();
-    
     const link = await createGoogleMeetEvent(`مكالمة مجموعة ${group.name || 'العائلة'}`, startTime, 60, "simulated-token");
 
     if (link) {
@@ -280,15 +292,23 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
                    <p className={`text-xs mb-1 ${theme.subText}`}>رمز الانضمام</p>
                    <p className={`text-3xl font-mono font-bold tracking-widest mb-4 select-all ${theme.text}`}>{inviteCode}</p>
                    
-                   <button 
-                      onClick={handleShareLink} 
-                      className={`w-full py-4 rounded-xl font-bold text-sm shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-all ${isDarkMode ? 'bg-emerald-700 text-white' : 'bg-emerald-600 text-white'}`}
-                   >
-                      <span>📤</span> مشاركة رابط الدعوة
-                   </button>
+                   <div className="grid grid-cols-2 gap-2">
+                       <button 
+                          onClick={handleShareLink} 
+                          className={`py-3 rounded-xl font-bold text-xs shadow-sm flex items-center justify-center gap-2 ${isDarkMode ? 'bg-emerald-700 text-white' : 'bg-emerald-600 text-white'}`}
+                       >
+                          📤 مشاركة الرابط
+                       </button>
+                       <button 
+                          onClick={handleCopyLinkOnly} 
+                          className={`py-3 rounded-xl font-bold text-xs border flex items-center justify-center gap-2 ${isDarkMode ? 'bg-[#333] border-[#444] text-white' : 'bg-white border-slate-300 text-slate-700'}`}
+                       >
+                          🔗 نسخ الرابط
+                       </button>
+                   </div>
                    <button 
                       onClick={() => { navigator.clipboard.writeText(inviteCode); alert('تم نسخ الرمز'); }} 
-                      className={`w-full mt-3 py-3 rounded-xl text-sm font-bold border active:scale-95 ${isDarkMode ? 'bg-[#333] border-[#444] text-white' : 'bg-white border-slate-300 text-slate-700'}`}
+                      className={`w-full mt-2 py-3 rounded-xl text-xs font-bold border active:scale-95 ${isDarkMode ? 'bg-[#333] border-[#444] text-gray-400' : 'bg-white border-slate-300 text-slate-500'}`}
                    >
                       نسخ الرمز فقط
                    </button>
