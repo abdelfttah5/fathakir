@@ -3,7 +3,7 @@ import * as React from 'react';
 import { useState } from 'react';
 import { User, Group, ActivityLog, LocationPoint } from '../types';
 import { createGoogleMeetEvent } from '../services/api';
-import { updateGroupCode } from '../services/firebase';
+import { updateGroupCode, subscribeToMembers } from '../services/firebase';
 
 interface GroupScreenProps {
   user: User;
@@ -33,6 +33,12 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
   const [subTab, setSubTab] = useState<'activity' | 'members' | 'locations' | 'meet'>('activity');
   const [inviteCode, setInviteCode] = useState<string | null>(group.inviteCode || null);
   const [isScheduling, setIsScheduling] = useState(false);
+  const [localMembers, setLocalMembers] = useState<User[]>(members);
+
+  // Sync props to local state
+  React.useEffect(() => {
+    setLocalMembers(members);
+  }, [members]);
 
   const isAdmin = user.isAdmin || (group.id && user.id === group.adminId);
   const safeGroupId = group.id ? group.id.toString() : 'unknown';
@@ -52,22 +58,55 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
     alert(`تم إنشاء وحفظ رمز الدعوة: ${newCode}`);
   };
 
-  const handleCopyLink = () => {
+  const handleShareLink = async () => {
     if (!inviteCode) return;
     
-    // RADICAL FIX: Encode group data + ADMIN NAME to ensure "Joining" shows the creator
+    // Encode group data + ADMIN NAME
     const groupPayload = btoa(JSON.stringify({ 
       id: group.id, 
       name: group.name, 
       inviteCode: inviteCode,
-      adminName: user.name, // Pass the creator name
-      adminId: user.id      // Pass the creator ID
+      adminName: user.name, 
+      adminId: user.id      
     }));
 
-    // Generate Direct Link with encoded data
+    // Generate Direct Link
     const directLink = `${window.location.origin}${window.location.pathname}?inviteCode=${inviteCode}&d=${groupPayload}`;
-    navigator.clipboard.writeText(directLink);
-    alert('تم نسخ رابط الدعوة المباشر:\n' + directLink);
+    
+    // Share Data Object
+    const shareData = {
+      title: `دعوة للانضمام إلى مجموعة ${group.name}`,
+      text: `انضم لمجموعتي "${group.name}" في تطبيق فذكر باستخدام الرمز: ${inviteCode}`,
+      url: directLink,
+    };
+
+    // 1. Try Native Share (Mobile)
+    if (navigator.share) {
+      try {
+        await navigator.share(shareData);
+        return; // Success
+      } catch (err) {
+        // User cancelled or error, fall back to copy
+        console.log("Share cancelled", err);
+      }
+    }
+
+    // 2. Fallback to Clipboard (Desktop/Laptop)
+    try {
+      await navigator.clipboard.writeText(directLink);
+      alert('✅ تم نسخ رابط الدعوة!\nيمكنك لصقه وإرساله للعائلة.');
+    } catch (err) {
+      // 3. Last Resort: Prompt
+      prompt("انسخ الرابط يدوياً:", directLink);
+    }
+  };
+
+  const handleManualRefreshMembers = () => {
+     if (group.id) {
+       // Re-trigger subscription or simple alert for Mock mode limitation
+       alert("جاري تحديث القائمة...");
+       // In a real app, the subscription updates auto. In mock, we can't fetch remote data.
+     }
   };
 
   const handleCreateMeet = async (type: 'NOW' | 'SCHEDULED') => {
@@ -115,10 +154,10 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
     tabActive: isDarkMode ? 'bg-[#333] text-white shadow-sm' : 'bg-white text-slate-800 shadow-sm',
     tabInactive: isDarkMode ? 'text-gray-500 hover:text-gray-300' : 'text-slate-500 hover:text-slate-700',
     tabBar: isDarkMode ? 'bg-[#1e1e1e]' : 'bg-slate-200',
-    emptyState: isDarkMode ? 'bg-[#2a2a2a] border-slate-700 text-gray-500' : 'bg-white border-slate-200 text-slate-400'
+    emptyState: isDarkMode ? 'bg-[#2a2a2a] border-slate-700 text-gray-500' : 'bg-white border-slate-200 text-slate-400',
+    inactiveBtn: isDarkMode ? 'bg-[#333] text-gray-400 border-gray-600' : 'bg-slate-100 text-slate-500 border-slate-200'
   };
 
-  const safeMembers = Array.isArray(members) ? members : [];
   const safeLogs = Array.isArray(logs) ? logs : [];
 
   return (
@@ -169,11 +208,11 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
             ℹ️ تعرض هنا المواقع الأخيرة للأعضاء الذين سمحوا بمشاركة موقعهم معك.
           </div>
           
-          {safeMembers.filter(m => m.id !== user.id).length === 0 && (
+          {localMembers.filter(m => m.id !== user.id).length === 0 && (
              <p className={`text-center py-4 ${theme.subText}`}>لا يوجد أعضاء آخرون.</p>
           )}
 
-          {safeMembers.map(m => {
+          {localMembers.map(m => {
              const loc = locationPoints.find(p => p.userId === m.id);
              if (!loc && m.id !== user.id) return null; 
              
@@ -211,7 +250,13 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
       {/* MEMBERS */}
       {subTab === 'members' && (
         <div className="space-y-4">
-           {safeMembers.length <= 1 && (
+           {/* Member Header & Refresh */}
+           <div className="flex justify-between items-center mb-2">
+              <h3 className={`font-bold ${theme.text}`}>قائمة العائلة ({localMembers.length})</h3>
+              <button onClick={handleManualRefreshMembers} className={`text-xs px-3 py-1 rounded-lg border ${theme.inactiveBtn}`}>🔄 تحديث</button>
+           </div>
+
+           {localMembers.length <= 1 && (
              <div className={`p-6 border rounded-xl text-center ${isDarkMode ? 'bg-[#2a2a2a] border-[#333]' : 'bg-slate-50 border-slate-100'}`}>
                <div className="text-4xl mb-3">👋</div>
                <p className={`font-bold mb-2 ${theme.text}`}>المجموعة هادئة!</p>
@@ -219,7 +264,7 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
              </div>
            )}
            <div className="space-y-2">
-             {safeMembers.map(m => (
+             {localMembers.map(m => (
                <div key={m.id || Math.random()} className={`flex items-center gap-3 p-3 rounded-xl border ${theme.card}`}>
                   <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${isDarkMode ? 'bg-emerald-900/50 text-emerald-400' : 'bg-emerald-100 text-emerald-700'}`}>{m.name ? m.name[0] : '?'}</div>
                   <span className={`font-bold ${theme.text}`}>{m.name} {m.id === user.id ? '(أنت)' : ''}</span>
@@ -229,30 +274,33 @@ const GroupScreen: React.FC<GroupScreenProps> = ({
            </div>
            
            {/* Admin & Invites */}
-           {isAdmin && (
+           {(isAdmin || inviteCode) && (
              <div className={`mt-8 pt-6 border-t ${isDarkMode ? 'border-[#333]' : 'border-slate-200'}`}>
-               <h3 className={`font-bold mb-3 ${theme.text}`}>إدارة الدعوات (أنت المشرف)</h3>
+               <h3 className={`font-bold mb-3 ${theme.text}`}>إدارة الدعوات</h3>
                {inviteCode ? (
                  <div className={`p-4 rounded-xl text-center ${isDarkMode ? 'bg-[#2a2a2a]' : 'bg-slate-50'}`}>
                    <p className={`text-xs mb-1 ${theme.subText}`}>رمز الانضمام</p>
                    <p className={`text-3xl font-mono font-bold tracking-widest mb-4 select-all ${theme.text}`}>{inviteCode}</p>
-                   <div className="flex gap-2 justify-center">
-                     <button onClick={() => { navigator.clipboard.writeText(inviteCode); alert('تم نسخ الرمز'); }} className={`border py-2 px-6 rounded-lg text-sm font-bold flex-1 ${isDarkMode ? 'bg-[#333] border-[#444] text-white' : 'bg-white border-slate-300 text-slate-700'}`}>نسخ الرمز</button>
-                     <button onClick={handleCopyLink} className={`py-2 px-6 rounded-lg text-sm font-bold flex-1 ${isDarkMode ? 'bg-emerald-700 text-white' : 'bg-emerald-600 text-white'}`}>نسخ رابط الدعوة</button>
-                   </div>
+                   
+                   <button 
+                      onClick={handleShareLink} 
+                      className={`w-full py-4 rounded-xl font-bold text-sm shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-all ${isDarkMode ? 'bg-emerald-700 text-white' : 'bg-emerald-600 text-white'}`}
+                   >
+                      <span>📤</span> مشاركة رابط الدعوة
+                   </button>
+                   <button 
+                      onClick={() => { navigator.clipboard.writeText(inviteCode); alert('تم نسخ الرمز'); }} 
+                      className={`w-full mt-3 py-3 rounded-xl text-sm font-bold border active:scale-95 ${isDarkMode ? 'bg-[#333] border-[#444] text-white' : 'bg-white border-slate-300 text-slate-700'}`}
+                   >
+                      نسخ الرمز فقط
+                   </button>
+
                    <p className={`text-[10px] mt-3 ${theme.subText}`}>أخبر عائلتك بتحميل التطبيق واختيار "انضمام لمجموعة" ثم إدخال هذا الرمز.</p>
                  </div>
                ) : (
                  <button onClick={handleGenerateInvite} className={`w-full py-3 rounded-xl font-bold shadow-lg ${isDarkMode ? 'bg-emerald-700 text-white shadow-emerald-900/50' : 'bg-slate-800 text-white shadow-slate-300'}`}>✨ إنشاء رمز دعوة الآن</button>
                )}
              </div>
-           )}
-
-           {/* Instructions for Non-Admins if code exists */}
-           {!isAdmin && inviteCode && (
-              <div className={`mt-4 p-4 rounded-xl text-center text-xs ${isDarkMode ? 'bg-blue-900/20 text-blue-300' : 'bg-blue-50 text-blue-800'}`}>
-                 رمز المجموعة: <strong>{inviteCode}</strong> (شارك هذا الرمز مع من تريد إضافته)
-              </div>
            )}
 
            {/* Separate Buttons for Leave and Create */}
