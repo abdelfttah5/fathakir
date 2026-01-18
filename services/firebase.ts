@@ -6,7 +6,6 @@ import {
 } from "firebase/firestore";
 import { User, Group, ActivityLog, LocationPoint } from "../types";
 
-// Workaround for TS errors regarding missing exports in firebase/auth
 import * as _auth from "firebase/auth";
 const { 
   signInAnonymously,
@@ -28,7 +27,7 @@ const cleanUndefined = (obj: any) => {
 };
 
 // ==========================================
-// MOCK STORAGE (Fallback)
+// MOCK STORAGE
 // ==========================================
 const MOCK_STORAGE_KEYS = {
   USER: 'fathakkir_session_user',
@@ -54,7 +53,6 @@ const setLocal = (key: string, data: any) => {
 // CORE SERVICES
 // ==========================================
 
-// 1. AUTH OBSERVATION
 export const observeAuthState = (callback: (user: any | null) => void) => {
   if (auth) {
     return onAuthStateChanged(auth, (user: any) => {
@@ -72,7 +70,6 @@ export const observeAuthState = (callback: (user: any | null) => void) => {
   }
 };
 
-// 2. GUEST LOGIN
 export const loginGuestUser = async (customName: string): Promise<User> => {
   const id = 'guest_' + Date.now() + Math.floor(Math.random() * 1000);
   
@@ -89,11 +86,12 @@ export const loginGuestUser = async (customName: string): Promise<User> => {
           isGuest: true,
           privacySettings: { showDetails: false, shareLocation: false }
         };
+        // Ensure user record exists
         await setDoc(doc(db, "users", fbUser.uid), newUser, { merge: true });
         return newUser;
       }
     } catch (e) {
-      console.warn("Firebase Anonymous Auth failed, using local mock", e);
+      console.warn("Firebase Anonymous Auth failed", e);
     }
   }
 
@@ -117,7 +115,9 @@ export const createGroupInFirestore = async (groupData: Group, creator: User) =>
 
   if (db && !isMockMode) {
     try {
+      // 1. Save Group
       await setDoc(doc(db, "groups", groupData.id), cleanUndefined({ ...groupData, adminId: creator.id }));
+      // 2. Add Admin as Member
       await setDoc(doc(db, "group_members", `${groupData.id}_${creator.id}`), {
         userId: creator.id,
         groupId: groupData.id,
@@ -128,7 +128,7 @@ export const createGroupInFirestore = async (groupData: Group, creator: User) =>
       return true;
     } catch (e) {
       console.error("Firestore Create Group Failed:", e);
-      throw new Error("تعذر إنشاء المجموعة على السيرفر. تم الإنشاء محلياً.");
+      throw new Error("تعذر إنشاء المجموعة على السيرفر. تحقق من الاتصال.");
     }
   }
   return true;
@@ -140,6 +140,7 @@ export const joinGroupInFirestore = async (inviteCode: string, user: User): Prom
 
   if (db && !isMockMode) {
     try {
+      // Find Group by Code
       const q = query(collection(db, "groups"), where("inviteCode", "==", code));
       const snapshot = await getDocs(q);
 
@@ -147,6 +148,7 @@ export const joinGroupInFirestore = async (inviteCode: string, user: User): Prom
         const groupDoc = snapshot.docs[0];
         const groupData = groupDoc.data() as Group;
         
+        // Add User to Group Members Collection
         await setDoc(doc(db, "group_members", `${groupData.id}_${user.id}`), {
           userId: user.id,
           groupId: groupData.id,
@@ -155,6 +157,13 @@ export const joinGroupInFirestore = async (inviteCode: string, user: User): Prom
           joinedAt: Date.now()
         });
 
+        // Also update local storage to reflect the join immediately
+        const localMembers = getLocal(MOCK_STORAGE_KEYS.MEMBERS_DB);
+        if (!localMembers.find((m: any) => m.userId === user.id && m.groupId === groupData.id)) {
+            localMembers.push({ ...user, userId: user.id, groupId: groupData.id, joinedAt: Date.now() });
+            setLocal(MOCK_STORAGE_KEYS.MEMBERS_DB, localMembers);
+        }
+
         return groupData;
       }
     } catch (e) {
@@ -162,6 +171,7 @@ export const joinGroupInFirestore = async (inviteCode: string, user: User): Prom
     }
   }
 
+  // Fallback to Local Search (only works if group was created locally on same device)
   const localGroups = getLocal(MOCK_STORAGE_KEYS.GROUPS_DB);
   const found = localGroups.find((g: Group) => g.inviteCode === code);
   
@@ -173,20 +183,26 @@ export const joinGroupInFirestore = async (inviteCode: string, user: User): Prom
   return null;
 };
 
-// 5. GET USER GROUP
+// 5. GET USER GROUP (Enhanced)
 export const getUserGroup = async (userId: string): Promise<Group | null> => {
   if (db && !isMockMode) {
     try {
+      // Look for membership record
       const q = query(collection(db, "group_members"), where("userId", "==", userId));
       const snap = await getDocs(q);
+      
       if (!snap.empty) {
+        // Assume user is in 1 group for MVP
         const groupId = snap.docs[0].data().groupId;
         const gDoc = await getDoc(doc(db, "groups", groupId));
         if (gDoc.exists()) return gDoc.data() as Group;
       }
-    } catch (e) { console.warn("Firestore get group failed", e); }
+    } catch (e) { 
+        console.warn("Firestore get group failed", e); 
+    }
   }
 
+  // Fallback Local
   const members = getLocal(MOCK_STORAGE_KEYS.MEMBERS_DB);
   const membership = members.find((m: any) => m.userId === userId);
   if (membership) {
@@ -196,28 +212,29 @@ export const getUserGroup = async (userId: string): Promise<Group | null> => {
   return null;
 };
 
-// 6. REALTIME MEMBERS LISTENER
+// 6. REALTIME MEMBERS LISTENER (Fixed Separation Issue)
 export const subscribeToMembers = (groupId: string, callback: (members: User[]) => void) => {
-  let unsub = () => {};
-
   if (db && !isMockMode) {
+    // If we have Firestore, RELY ON IT. Do not mix with local storage for membership list
+    // because that causes ghost groups if local storage is empty on a new device.
     try {
       const q = query(collection(db, "group_members"), where("groupId", "==", groupId));
-      unsub = onSnapshot(q, (snap) => {
+      return onSnapshot(q, (snap) => {
         const list: User[] = [];
         snap.forEach(d => list.push(d.data() as User));
         callback(list);
       });
     } catch (e) { console.error(e); }
-  } else {
-    const interval = setInterval(() => {
-      const all = getLocal(MOCK_STORAGE_KEYS.MEMBERS_DB);
-      const filtered = all.filter((m: any) => m.groupId === groupId);
-      callback(filtered);
-    }, 2000);
-    unsub = () => clearInterval(interval);
-  }
-  return unsub;
+  } 
+  
+  // Only if Mock Mode or DB fails, use Local Polling
+  const interval = setInterval(() => {
+    const all = getLocal(MOCK_STORAGE_KEYS.MEMBERS_DB);
+    const filtered = all.filter((m: any) => m.groupId === groupId);
+    callback(filtered);
+  }, 2000);
+  
+  return () => clearInterval(interval);
 };
 
 // 7. SEEDING
@@ -263,28 +280,23 @@ const forceSaveToLocalLog = (groupId: string, log: ActivityLog) => {
   setLocal(MOCK_STORAGE_KEYS.LOGS_DB, logs);
 };
 
-// UPDATED: Hybrid Listener (Merges Remote and Local)
+// Hybrid Listener for Logs (Optimistic UI)
 export const subscribeToLogs = (groupId: string, cb: (logs: ActivityLog[]) => void) => { 
     let remoteLogs: ActivityLog[] = [];
     let localLogs: ActivityLog[] = [];
     let unsubRemote = () => {};
 
-    // Helper to merge and sort
     const mergeAndEmit = () => {
         const combined = [...remoteLogs];
-        // Add local logs that are not in remote (by ID)
         localLogs.forEach(l => {
             if (!combined.find(r => r.id === l.id)) {
                 combined.push(l);
             }
         });
-        // Sort DESC (Newest first) - Client side sorting
         combined.sort((a, b) => b.timestamp - a.timestamp);
-        // Limit to 50 items
         cb(combined.slice(0, 50));
     };
 
-    // 1. Setup Remote Listener
     if(db && !isMockMode) {
         const q = query(collection(db, "activity_logs"), where("groupId", "==", groupId));
         unsubRemote = onSnapshot(q, (s) => {
@@ -292,18 +304,17 @@ export const subscribeToLogs = (groupId: string, cb: (logs: ActivityLog[]) => vo
             s.forEach(d => remoteLogs.push(d.data() as ActivityLog));
             mergeAndEmit();
         }, (error) => {
-            console.warn("Firestore subscription failed, relying on local:", error);
+            console.warn("Firestore log subscription failed", error);
         });
     }
 
-    // 2. Setup Local Polling (Always active to catch local-only saves)
+    // Always poll local for optimistic updates
     const interval = setInterval(() => {
         const all = getLocal(MOCK_STORAGE_KEYS.LOGS_DB);
         localLogs = all.filter((l:any) => l.groupId === groupId);
         mergeAndEmit();
     }, 2000); 
 
-    // Initial Local Load
     const all = getLocal(MOCK_STORAGE_KEYS.LOGS_DB);
     localLogs = all.filter((l:any) => l.groupId === groupId);
     mergeAndEmit();
@@ -314,7 +325,7 @@ export const subscribeToLogs = (groupId: string, cb: (logs: ActivityLog[]) => vo
     };
 };
 
-// UPDATED: Hybrid Listener for Locations (Ensures Latest Location Visibility)
+// Hybrid Listener for Locations
 export const subscribeToLocations = (groupId: string, cb: (locs: LocationPoint[]) => void) => {
     let remoteLocs: LocationPoint[] = [];
     let localLocs: LocationPoint[] = [];
@@ -322,40 +333,32 @@ export const subscribeToLocations = (groupId: string, cb: (locs: LocationPoint[]
 
     const mergeAndEmit = () => {
         const all = [...remoteLocs, ...localLocs];
-        // Create a map to keep only the latest location per user
         const latestMap = new Map<string, LocationPoint>();
         
         all.forEach(p => {
             const existing = latestMap.get(p.userId);
-            // If new or newer, update
             if (!existing || p.timestamp > existing.timestamp) {
                 latestMap.set(p.userId, p);
             }
         });
-        
         cb(Array.from(latestMap.values()));
     };
 
-    // 1. Remote
     if(db && !isMockMode) {
         const q = query(collection(db, "locations"), where("groupId", "==", groupId));
         unsubRemote = onSnapshot(q, (s) => {
             remoteLocs = [];
             s.forEach(d => remoteLocs.push(d.data() as LocationPoint));
             mergeAndEmit();
-        }, (err) => {
-            console.warn("Location sync warning:", err);
         });
     }
 
-    // 2. Local Polling
     const interval = setInterval(() => {
         const all = getLocal(MOCK_STORAGE_KEYS.LOCATIONS_DB);
         localLocs = all.filter((l:any) => l.groupId === groupId);
         mergeAndEmit();
-    }, 3000); // Check every 3 seconds
+    }, 3000);
 
-    // Initial
     const all = getLocal(MOCK_STORAGE_KEYS.LOCATIONS_DB);
     localLocs = all.filter((l:any) => l.groupId === groupId);
     mergeAndEmit();
@@ -367,28 +370,23 @@ export const subscribeToLocations = (groupId: string, cb: (locs: LocationPoint[]
 };
 
 export const logActivityToFirestore = async (groupId: string, log: ActivityLog) => {
-    // 1. Always save locally first (Fail-safe)
     forceSaveToLocalLog(groupId, log);
 
-    // 2. Try remote save if configured
     if(db && !isMockMode) {
         try {
             await setDoc(doc(db, "activity_logs", log.id), { ...log, groupId });
         } catch (e) {
-            console.warn("Firestore save failed (saved locally only):", e);
+            console.warn("Firestore save failed", e);
         }
     }
 };
 
 export const updateLocationInFirestore = async (groupId: string, point: LocationPoint) => {
-    // 1. Save Local
     const locations = getLocal(MOCK_STORAGE_KEYS.LOCATIONS_DB);
-    // Remove old location for this user in this group
     const filtered = locations.filter((l: any) => !(l.userId === point.userId && l.groupId === groupId));
     filtered.push({ ...point, groupId });
     setLocal(MOCK_STORAGE_KEYS.LOCATIONS_DB, filtered);
 
-    // 2. Save Remote
     if(db && !isMockMode) {
         try {
             await setDoc(doc(db, "locations", `${groupId}_${point.userId}`), {
